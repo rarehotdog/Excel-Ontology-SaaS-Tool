@@ -49,12 +49,13 @@
         '@': path.resolve(__dirname, './src'),
       },
     },
+    base: './', // Electron용 상대 경로
     build: {
       target: 'esnext',
-      outDir: 'build',
+      outDir: 'dist',
     },
     server: {
       port: 3000,
-      open: true,
+      open: false, // Electron에서 열리므로 false
     },
   });
