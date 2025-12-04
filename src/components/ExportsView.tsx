@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Download, FileSpreadsheet, FileText, Database, Share2, Sparkles, RefreshCw } from 'lucide-react';
+import { Download, FileSpreadsheet, FileText, Database, Share2, Sparkles, RefreshCw, Eye, X, Code } from 'lucide-react';
 
 export function ExportsView() {
   const [files, setFiles] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [previewFile, setPreviewFile] = useState<any>(null); // File metadata for preview
+  const [previewData, setPreviewData] = useState<any[]>([]); // Actual data rows
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   useEffect(() => {
     fetchFiles();
@@ -22,7 +25,7 @@ export function ExportsView() {
     }
   };
 
-  const handleDownload = async (filename: string, format: 'csv' | 'excel') => {
+  const handleDownload = async (filename: string, format: 'csv' | 'excel' | 'json') => {
     try {
       const res = await fetch(`http://localhost:8000/export/download?filename=${filename}&format=${format}`);
       if (res.ok) {
@@ -30,7 +33,12 @@ export function ExportsView() {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = format === 'excel' ? `${filename.split('.')[0]}.xlsx` : `${filename.split('.')[0]}.csv`;
+
+        let ext = 'csv';
+        if (format === 'excel') ext = 'xlsx';
+        if (format === 'json') ext = 'json';
+
+        a.download = `${filename.split('.')[0]}.${ext}`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
@@ -41,8 +49,19 @@ export function ExportsView() {
     }
   };
 
+  const handlePreview = async (file: any) => {
+    setPreviewFile(file);
+    setIsPreviewOpen(true);
+    // In a real app, we might fetch a sample here. 
+    // For now, we use the 'head' data already in metadata if available, 
+    // or we could fetch it. Let's assume 'head' is in file metadata from /data/list
+    if (file.head) {
+      setPreviewData(file.head);
+    }
+  };
+
   return (
-    <div className="h-full overflow-auto">
+    <div className="h-full overflow-auto relative">
       {/* Header */}
       <div className="p-8 pb-6">
         <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 shadow-xl shadow-teal-100/50">
@@ -53,7 +72,7 @@ export function ExportsView() {
               </div>
               <div>
                 <h1 className="text-3xl text-gray-900 mb-1">Export Center</h1>
-                <p className="text-gray-600">Download your transformed data</p>
+                <p className="text-gray-600">Download, preview, and integrate your data.</p>
               </div>
             </div>
             <button
@@ -69,14 +88,14 @@ export function ExportsView() {
 
       <div className="px-8 pb-8">
         <div className="max-w-7xl mx-auto space-y-6">
-          {/* Export Options (Static for now) */}
+          {/* Export Options */}
           <div className="grid grid-cols-4 gap-6">
             <div className="group bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-3xl p-8 shadow-xl shadow-emerald-200/50 text-white transition-all duration-300">
               <div className="w-16 h-16 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mb-4">
                 <FileSpreadsheet className="w-8 h-8 text-white" />
               </div>
               <h3 className="text-lg mb-1">Excel</h3>
-              <p className="text-sm text-emerald-100">Supported</p>
+              <p className="text-sm text-emerald-100">Full formatting supported</p>
             </div>
 
             <div className="group bg-gradient-to-br from-blue-400 to-blue-600 rounded-3xl p-8 shadow-xl shadow-blue-200/50 text-white transition-all duration-300">
@@ -84,27 +103,27 @@ export function ExportsView() {
                 <FileText className="w-8 h-8 text-white" />
               </div>
               <h3 className="text-lg mb-1">CSV</h3>
-              <p className="text-sm text-blue-100">Supported</p>
+              <p className="text-sm text-blue-100">Universal compatibility</p>
             </div>
 
-            <div className="group bg-gradient-to-br from-purple-400 to-purple-600 rounded-3xl p-8 shadow-xl shadow-purple-200/50 text-white opacity-60 cursor-not-allowed">
+            <div className="group bg-gradient-to-br from-purple-400 to-purple-600 rounded-3xl p-8 shadow-xl shadow-purple-200/50 text-white transition-all duration-300">
               <div className="w-16 h-16 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mb-4">
-                <Database className="w-8 h-8 text-white" />
+                <Code className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-lg mb-1">Database</h3>
-              <p className="text-sm text-purple-100">Coming Soon</p>
+              <h3 className="text-lg mb-1">JSON</h3>
+              <p className="text-sm text-purple-100">Web & API ready</p>
             </div>
 
             <div className="group bg-gradient-to-br from-pink-400 to-pink-600 rounded-3xl p-8 shadow-xl shadow-pink-200/50 text-white opacity-60 cursor-not-allowed">
               <div className="w-16 h-16 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mb-4">
-                <Share2 className="w-8 h-8 text-white" />
+                <Database className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-lg mb-1">API</h3>
+              <h3 className="text-lg mb-1">Database</h3>
               <p className="text-sm text-pink-100">Coming Soon</p>
             </div>
           </div>
 
-          {/* Export History / File List */}
+          {/* File List */}
           <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl shadow-teal-100/50 overflow-hidden">
             <div className="px-8 py-6 bg-gradient-to-r from-teal-50 to-emerald-50">
               <h3 className="text-xl text-gray-900 flex items-center gap-3">
@@ -138,6 +157,18 @@ export function ExportsView() {
                     </div>
                     <div className="flex items-center gap-3">
                       <button
+                        onClick={() => handlePreview(file)}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors"
+                      >
+                        <Eye className="w-4 h-4" /> Preview
+                      </button>
+                      <button
+                        onClick={() => handleDownload(file.filename, 'json')}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-xl transition-colors"
+                      >
+                        <Code className="w-4 h-4" /> JSON
+                      </button>
+                      <button
                         onClick={() => handleDownload(file.filename, 'csv')}
                         className="flex items-center gap-2 px-4 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-xl transition-colors"
                       >
@@ -162,6 +193,66 @@ export function ExportsView() {
           </div>
         </div>
       </div>
+
+      {/* Preview Modal */}
+      {isPreviewOpen && previewFile && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-8">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-full flex flex-col overflow-hidden">
+            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">{previewFile.filename}</h3>
+                <p className="text-sm text-gray-500">Previewing first 5 rows</p>
+              </div>
+              <button
+                onClick={() => setIsPreviewOpen(false)}
+                className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+              >
+                <X className="w-6 h-6 text-gray-500" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-6">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      {previewFile.columns.map((col: string) => (
+                        <th key={col} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {previewData.map((row: any, idx: number) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        {previewFile.columns.map((col: string) => (
+                          <td key={`${idx}-${col}`} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {String(row[col] ?? '')}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+              <button
+                onClick={() => setIsPreviewOpen(false)}
+                className="px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => handleDownload(previewFile.filename, 'excel')}
+                className="px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-medium shadow-lg shadow-indigo-200"
+              >
+                Download Excel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

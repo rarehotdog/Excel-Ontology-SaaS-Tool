@@ -6,7 +6,7 @@ import { Pipeline } from './components/Pipeline';
 import { OntologyView } from './components/OntologyView';
 import { AnalyticsView } from './components/AnalyticsView';
 import { ExportsView } from './components/ExportsView';
-import { ReconciliationView } from './components/ReconciliationView';
+import { SettlementView } from './components/SettlementView';
 import { SmartTransformView } from './components/SmartTransformView';
 
 export default function App() {
@@ -21,9 +21,7 @@ export default function App() {
         {activeView === 'dashboard' && <Dashboard onNavigate={setActiveView} />}
         {activeView === 'sources' && <DataSources />}
         {activeView === 'smart' && <SmartTransformView />}
-        {activeView === 'reconciliation' && <ReconciliationView />}
-        {activeView === 'pipeline' && <Pipeline />}
-        {activeView === 'ontology' && <OntologyView />}
+        {activeView === 'reconciliation' && <SettlementView />}
         {activeView === 'analytics' && <AnalyticsView />}
         {activeView === 'exports' && <ExportsView />}
       </main>

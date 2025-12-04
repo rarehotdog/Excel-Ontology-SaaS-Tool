@@ -62,3 +62,34 @@ class AnalyticsEngine:
             value_counts = col_data.value_counts().head(10)
             data = [{"name": str(k), "value": int(v)} for k, v in value_counts.items()]
             return {"type": "categorical", "data": data}
+
+    def calculate_correlations(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Calculates correlation matrix for numeric columns.
+        """
+        # Select numeric columns only
+        numeric_df = df.select_dtypes(include=[np.number])
+        
+        if numeric_df.empty or len(numeric_df.columns) < 2:
+            return {"columns": [], "matrix": []}
+            
+        # Calculate correlation matrix
+        corr_matrix = numeric_df.corr().round(2)
+        
+        # Format for frontend (heatmap)
+        # We need: x (col), y (row), value
+        data = []
+        columns = list(corr_matrix.columns)
+        
+        for i, row_col in enumerate(columns):
+            for j, col_col in enumerate(columns):
+                data.append({
+                    "x": col_col,
+                    "y": row_col,
+                    "value": corr_matrix.iloc[i, j]
+                })
+                
+        return {
+            "columns": columns,
+            "data": data
+        }

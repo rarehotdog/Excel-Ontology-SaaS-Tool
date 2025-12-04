@@ -1,378 +1,295 @@
 import { useState, useEffect } from 'react';
-import { Scale, ArrowRightLeft, FileSpreadsheet, AlertCircle, CheckCircle2, ArrowRight, DollarSign, List } from 'lucide-react';
+import { Upload, ArrowRightLeft, CheckCircle, AlertTriangle, XCircle, FileSpreadsheet, RefreshCw, Search, Filter, Play } from 'lucide-react';
 
 export function ReconciliationView() {
-    const [sources, setSources] = useState<any[]>([]);
-    const [internalFile, setInternalFile] = useState<string>('');
-    const [externalFile, setExternalFile] = useState<string>('');
-    const [isReconciling, setIsReconciling] = useState(false);
-    const [results, setResults] = useState<any>(null);
+    const [activeTab, setActiveTab] = useState<'franchise' | 'biz'>('franchise');
+    const [files, setFiles] = useState<any[]>([]);
 
-    // Step 2: Column Mapping
-    const [step, setStep] = useState(1);
-    const [columns, setColumns] = useState<string[]>([]);
-    const [keyColumns, setKeyColumns] = useState<string[]>([]);
-    const [valueColumns, setValueColumns] = useState<string[]>([]);
-    const [activeTab, setActiveTab] = useState<'mismatches' | 'missing_ext' | 'missing_int'>('mismatches');
+    // Franchise State
+    const [adminFile, setAdminFile] = useState('');
+    const [callFile, setCallFile] = useState('');
+    const [paymentFile, setPaymentFile] = useState('');
+    const [billingFile, setBillingFile] = useState('');
+    const [franchiseResults, setFranchiseResults] = useState<any>(null);
+
+    // Biz State
+    const [fileA, setFileA] = useState('');
+    const [fileB, setFileB] = useState('');
+    const [bizResults, setBizResults] = useState<any>(null);
+    const [diffFilter, setDiffFilter] = useState('');
+    const [isReaggregating, setIsReaggregating] = useState(false);
 
     useEffect(() => {
-        fetchDataSources();
+        fetch('http://localhost:8000/data/list')
+            .then(res => res.json())
+            .then(data => setFiles(data));
     }, []);
 
-    const fetchDataSources = async () => {
+    const handleFranchiseCheck = async () => {
+        if (!adminFile) return;
         try {
-            const response = await fetch('http://localhost:8000/data/list');
-            if (response.ok) {
-                const data = await response.json();
-                setSources(data);
-            }
-        } catch (error) {
-            console.error('Failed to fetch data sources:', error);
-        }
-    };
-
-    const handleFileSelection = () => {
-        if (!internalFile || !externalFile) {
-            alert('Please select both Internal and External files.');
-            return;
-        }
-
-        // Fetch columns for the internal file (assuming similar schema for now, or we could fetch both)
-        const file = sources.find(s => s.filename === internalFile);
-        if (file) {
-            setColumns(file.columns);
-            setStep(2);
-        }
-    };
-
-    const toggleColumn = (col: string, type: 'key' | 'value') => {
-        if (type === 'key') {
-            setKeyColumns(prev => prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]);
-        } else {
-            setValueColumns(prev => prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]);
-        }
-    };
-
-    const handleReconcile = async () => {
-        if (keyColumns.length === 0 || valueColumns.length === 0) {
-            alert('Please select at least one Key column and one Value column.');
-            return;
-        }
-
-        setIsReconciling(true);
-        try {
-            const requestBody = {
-                internal_filename: internalFile,
-                external_filename: externalFile,
-                key_columns: keyColumns,
-                value_columns: valueColumns
-            };
-
-            const response = await fetch('http://localhost:8000/etl/reconcile', {
+            const res = await fetch('http://localhost:8000/settlement/franchise/check', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody),
+                body: JSON.stringify({
+                    admin_file: adminFile,
+                    call_file: callFile,
+                    payment_file: paymentFile,
+                    billing_file: billingFile
+                })
             });
-
-            if (!response.ok) throw new Error('Reconciliation failed');
-
-            const data = await response.json();
-            setResults(data.results);
-            setStep(3);
-        } catch (error) {
-            console.error('Reconciliation error:', error);
-            alert('Failed to reconcile.');
-        } finally {
-            setIsReconciling(false);
+            const data = await res.json();
+            setFranchiseResults(data.results);
+        } catch (err) {
+            console.error(err);
         }
     };
 
-    const reset = () => {
-        setStep(1);
-        setResults(null);
-        setKeyColumns([]);
-        setValueColumns([]);
+    const handleBizCompare = async () => {
+        if (!fileA || !fileB) return;
+        try {
+            const res = await fetch('http://localhost:8000/settlement/biz/compare', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_a: fileA, file_b: fileB, keys: ['id', 'order_id', 'date'] }) // Mock keys
+            });
+            const data = await res.json();
+            setBizResults(data.results);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const handleBizReaggregate = async () => {
+        if (!fileA || !fileB) return;
+        setIsReaggregating(true);
+        try {
+            // Mock filter: exclude recent dates
+            const filters = { exclude_date_start: "2024-01-01" };
+
+            const res = await fetch('http://localhost:8000/settlement/biz/reaggregate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    file_a: fileA,
+                    file_b: fileB,
+                    keys: ['id', 'order_id', 'date'],
+                    filters: filters
+                })
+            });
+            const data = await res.json();
+            setBizResults(data.results);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsReaggregating(false);
+        }
     };
 
     return (
         <div className="h-full overflow-auto p-8 bg-gray-50">
             {/* Header */}
-            <div className="mb-8 flex justify-between items-center">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-                        <Scale className="w-8 h-8 text-indigo-600" />
-                        Settlement Engine
-                    </h1>
-                    <p className="text-gray-500 mt-1">Automated reconciliation and discrepancy detection.</p>
-                </div>
-                {step > 1 && (
-                    <button onClick={reset} className="text-sm text-gray-500 hover:text-gray-900 underline">
-                        Start Over
-                    </button>
-                )}
+            <div className="mb-8">
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">Settlement Engine 2.0</h1>
+                <p className="text-gray-600">Advanced reconciliation for Franchise and Biz teams.</p>
             </div>
 
-            {/* Step 1: File Selection */}
-            {step === 1 && (
-                <div className="max-w-4xl mx-auto">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                                <FileSpreadsheet className="w-5 h-5 text-blue-500" /> Internal Data
-                            </h3>
-                            <select
-                                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                value={internalFile}
-                                onChange={(e) => setInternalFile(e.target.value)}
-                            >
-                                <option value="">Select File...</option>
-                                {sources.map(s => <option key={s.filename} value={s.filename}>{s.filename}</option>)}
-                            </select>
-                        </div>
+            {/* Tabs */}
+            <div className="flex gap-4 mb-8 border-b border-gray-200">
+                <button
+                    onClick={() => setActiveTab('franchise')}
+                    className={`pb-4 px-4 font-medium transition-colors relative ${activeTab === 'franchise' ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Franchise Mode
+                    {activeTab === 'franchise' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600" />}
+                </button>
+                <button
+                    onClick={() => setActiveTab('biz')}
+                    className={`pb-4 px-4 font-medium transition-colors relative ${activeTab === 'biz' ? 'text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                    Biz Mode
+                    {activeTab === 'biz' && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-600" />}
+                </button>
+            </div>
 
-                        <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                                <FileSpreadsheet className="w-5 h-5 text-green-500" /> External Data
-                            </h3>
-                            <select
-                                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none transition-all"
-                                value={externalFile}
-                                onChange={(e) => setExternalFile(e.target.value)}
-                            >
+            {/* Franchise Mode Content */}
+            {activeTab === 'franchise' && (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-4 gap-6">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Admin Data (Required)</label>
+                            <select value={adminFile} onChange={e => setAdminFile(e.target.value)} className="w-full p-2 border rounded-lg">
                                 <option value="">Select File...</option>
-                                {sources.map(s => <option key={s.filename} value={s.filename}>{s.filename}</option>)}
+                                {files.map(f => <option key={f.filename} value={f.filename}>{f.filename}</option>)}
+                            </select>
+                        </div>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Call Logs (Optional)</label>
+                            <select value={callFile} onChange={e => setCallFile(e.target.value)} className="w-full p-2 border rounded-lg">
+                                <option value="">Select File...</option>
+                                {files.map(f => <option key={f.filename} value={f.filename}>{f.filename}</option>)}
+                            </select>
+                        </div>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Payment Logs (Optional)</label>
+                            <select value={paymentFile} onChange={e => setPaymentFile(e.target.value)} className="w-full p-2 border rounded-lg">
+                                <option value="">Select File...</option>
+                                {files.map(f => <option key={f.filename} value={f.filename}>{f.filename}</option>)}
+                            </select>
+                        </div>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Billing Data (Optional)</label>
+                            <select value={billingFile} onChange={e => setBillingFile(e.target.value)} className="w-full p-2 border rounded-lg">
+                                <option value="">Select File...</option>
+                                {files.map(f => <option key={f.filename} value={f.filename}>{f.filename}</option>)}
                             </select>
                         </div>
                     </div>
-                    <div className="flex justify-center">
-                        <button
-                            onClick={handleFileSelection}
-                            disabled={!internalFile || !externalFile}
-                            className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                        >
-                            Next: Map Columns <ArrowRight className="w-4 h-4" />
-                        </button>
-                    </div>
+
+                    <button
+                        onClick={handleFranchiseCheck}
+                        disabled={!adminFile}
+                        className="px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                    >
+                        <CheckCircle className="w-5 h-5" /> Run Integrity Check
+                    </button>
+
+                    {franchiseResults && (
+                        <div className="space-y-6">
+                            {/* Summary Cards */}
+                            <div className="grid grid-cols-4 gap-6">
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                                    <div className="text-sm text-gray-500 mb-1">Total Records</div>
+                                    <div className="text-2xl font-bold text-gray-900">{franchiseResults.summary.total}</div>
+                                </div>
+                                <div className="bg-green-50 p-6 rounded-xl shadow-sm border border-green-200">
+                                    <div className="text-sm text-green-700 mb-1">Normal (Green)</div>
+                                    <div className="text-2xl font-bold text-green-900">{franchiseResults.summary.green}</div>
+                                </div>
+                                <div className="bg-yellow-50 p-6 rounded-xl shadow-sm border border-yellow-200">
+                                    <div className="text-sm text-yellow-700 mb-1">Warning (Yellow)</div>
+                                    <div className="text-2xl font-bold text-yellow-900">{franchiseResults.summary.yellow}</div>
+                                </div>
+                                <div className="bg-red-50 p-6 rounded-xl shadow-sm border border-red-200">
+                                    <div className="text-sm text-red-700 mb-1">Critical (Red)</div>
+                                    <div className="text-2xl font-bold text-red-900">{franchiseResults.summary.red}</div>
+                                </div>
+                            </div>
+
+                            {/* Detail Table */}
+                            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                                <div className="p-4 border-b border-gray-200 bg-gray-50 font-medium text-gray-700">Detailed Analysis</div>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Issues</th>
+                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Data Preview</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-200">
+                                            {franchiseResults.details.slice(0, 50).map((row: any, idx: number) => (
+                                                <tr key={idx} className={row.integrity_status === 'red' ? 'bg-red-50' : row.integrity_status === 'yellow' ? 'bg-yellow-50' : ''}>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        {row.integrity_status === 'green' && <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800">Normal</span>}
+                                                        {row.integrity_status === 'yellow' && <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">Warning</span>}
+                                                        {row.integrity_status === 'red' && <span className="px-2 py-1 text-xs rounded-full bg-red-100 text-red-800">Critical</span>}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-gray-900">{row.issues || '-'}</td>
+                                                    <td className="px-6 py-4 text-sm text-gray-500">{JSON.stringify(row).slice(0, 50)}...</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
-            {/* Step 2: Column Mapping */}
-            {step === 2 && (
-                <div className="max-w-4xl mx-auto">
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-                        <h2 className="text-xl font-bold text-gray-900 mb-6">Map Reconciliation Logic</h2>
-
-                        <div className="grid grid-cols-2 gap-12">
-                            <div>
-                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">1. Match Records By (Key)</h3>
-                                <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
-                                    {columns.map(col => (
-                                        <label key={`key-${col}`} className={`flex items-center p-3 rounded-lg border cursor-pointer transition-all ${keyColumns.includes(col) ? 'bg-indigo-50 border-indigo-500' : 'border-gray-200 hover:bg-gray-50'}`}>
-                                            <input
-                                                type="checkbox"
-                                                checked={keyColumns.includes(col)}
-                                                onChange={() => toggleColumn(col, 'key')}
-                                                className="h-4 w-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
-                                            />
-                                            <span className="ml-3 text-sm font-medium text-gray-900">{col}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div>
-                                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-4">2. Compare Values (Value)</h3>
-                                <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
-                                    {columns.map(col => (
-                                        <label key={`val-${col}`} className={`flex items-center p-3 rounded-lg border cursor-pointer transition-all ${valueColumns.includes(col) ? 'bg-green-50 border-green-500' : 'border-gray-200 hover:bg-gray-50'}`}>
-                                            <input
-                                                type="checkbox"
-                                                checked={valueColumns.includes(col)}
-                                                onChange={() => toggleColumn(col, 'value')}
-                                                className="h-4 w-4 text-green-600 rounded border-gray-300 focus:ring-green-500"
-                                            />
-                                            <span className="ml-3 text-sm font-medium text-gray-900">{col}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
+            {/* Biz Mode Content */}
+            {activeTab === 'biz' && (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-6">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">File A (Base)</label>
+                            <select value={fileA} onChange={e => setFileA(e.target.value)} className="w-full p-2 border rounded-lg">
+                                <option value="">Select File...</option>
+                                {files.map(f => <option key={f.filename} value={f.filename}>{f.filename}</option>)}
+                            </select>
                         </div>
-
-                        <div className="mt-8 flex justify-center">
-                            <button
-                                onClick={handleReconcile}
-                                disabled={isReconciling || keyColumns.length === 0 || valueColumns.length === 0}
-                                className="w-full md:w-auto bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-8 py-4 rounded-xl font-bold shadow-lg hover:shadow-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                            >
-                                {isReconciling ? (
-                                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                ) : (
-                                    <ArrowRightLeft className="w-5 h-5" />
-                                )}
-                                Run Reconciliation
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Step 3: Results */}
-            {step === 3 && results && (
-                <div className="space-y-6 max-w-7xl mx-auto">
-                    {/* Summary Stats */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-                            <div className="text-gray-500 text-sm font-medium mb-1">Match Rate</div>
-                            <div className="flex items-baseline gap-2">
-                                <span className="text-3xl font-bold text-gray-900">
-                                    {Math.round((results.summary.matched_count / results.summary.total_internal) * 100)}%
-                                </span>
-                                <span className="text-sm text-gray-500">
-                                    ({results.summary.matched_count} / {results.summary.total_internal})
-                                </span>
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-                            <div className="text-gray-500 text-sm font-medium mb-1">Financial Impact</div>
-                            <div className={`text-3xl font-bold ${results.summary.net_financial_impact > 0 ? 'text-green-600' : results.summary.net_financial_impact < 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                                {results.summary.net_financial_impact > 0 ? '+' : ''}
-                                {results.summary.net_financial_impact.toLocaleString()}
-                            </div>
-                        </div>
-
-                        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-                            <div className="text-gray-500 text-sm font-medium mb-1">Unmatched (Internal)</div>
-                            <div className="text-3xl font-bold text-orange-600">{results.summary.missing_in_external_count}</div>
-                        </div>
-
-                        <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
-                            <div className="text-gray-500 text-sm font-medium mb-1">Unmatched (External)</div>
-                            <div className="text-3xl font-bold text-blue-600">{results.summary.missing_in_internal_count}</div>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">File B (Target)</label>
+                            <select value={fileB} onChange={e => setFileB(e.target.value)} className="w-full p-2 border rounded-lg">
+                                <option value="">Select File...</option>
+                                {files.map(f => <option key={f.filename} value={f.filename}>{f.filename}</option>)}
+                            </select>
                         </div>
                     </div>
 
-                    {/* Detailed View */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                        <div className="flex border-b border-gray-200">
-                            <button
-                                onClick={() => setActiveTab('mismatches')}
-                                className={`px-6 py-4 text-sm font-medium transition-colors ${activeTab === 'mismatches' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
-                            >
-                                Value Mismatches ({results.summary.value_mismatch_count})
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('missing_ext')}
-                                className={`px-6 py-4 text-sm font-medium transition-colors ${activeTab === 'missing_ext' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
-                            >
-                                Missing in External ({results.summary.missing_in_external_count})
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('missing_int')}
-                                className={`px-6 py-4 text-sm font-medium transition-colors ${activeTab === 'missing_int' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-gray-500 hover:text-gray-700'}`}
-                            >
-                                Missing in Internal ({results.summary.missing_in_internal_count})
-                            </button>
+                    <button
+                        onClick={handleBizCompare}
+                        disabled={!fileA || !fileB}
+                        className="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+                    >
+                        <ArrowRightLeft className="w-5 h-5" /> Compare & Analyze
+                    </button>
+
+                    {bizResults && (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                            <div className="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+                                <div className="font-semibold text-gray-700">Discrepancies: {bizResults.total_discrepancies}</div>
+                                <div className="flex items-center gap-2">
+                                    <Filter className="w-4 h-4 text-gray-500" />
+                                    <input
+                                        type="text"
+                                        placeholder="Filter by reason..."
+                                        value={diffFilter}
+                                        onChange={(e) => setDiffFilter(e.target.value)}
+                                        className="text-sm border rounded px-2 py-1"
+                                    />
+                                </div>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reason (AI)</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Diff Amount</th>
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Details</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {bizResults.discrepancies
+                                            .filter((d: any) => d.reason.toLowerCase().includes(diffFilter.toLowerCase()))
+                                            .map((row: any, idx: number) => (
+                                                <tr key={idx} className="hover:bg-gray-50">
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-800 font-semibold">
+                                                            {row.reason}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-sm text-gray-900 font-mono">{row.diff_amount?.toFixed(2)}</td>
+                                                    <td className="px-6 py-4 text-sm text-gray-500">{JSON.stringify(row).slice(0, 50)}...</td>
+                                                </tr>
+                                            ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end">
+                                <button
+                                    onClick={handleBizReaggregate}
+                                    disabled={isReaggregating}
+                                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium text-gray-700"
+                                >
+                                    <RefreshCw className={`w-4 h-4 ${isReaggregating ? 'animate-spin' : ''}`} />
+                                    {isReaggregating ? 'Re-aggregating...' : 'Re-aggregate'}
+                                </button>
+                            </div>
                         </div>
-
-                        <div className="p-6">
-                            {activeTab === 'mismatches' && (
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-gray-200">
-                                        <thead className="bg-gray-50">
-                                            <tr>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Key</th>
-                                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Column</th>
-                                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Internal</th>
-                                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">External</th>
-                                                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Diff</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="bg-white divide-y divide-gray-200">
-                                            {results.mismatches.map((m: any, idx: number) => (
-                                                <tr key={idx} className="hover:bg-gray-50">
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">{JSON.stringify(m.key)}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{m.column}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{m.internal_value}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-mono">{m.external_value}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-red-600">{m.diff}</td>
-                                                </tr>
-                                            ))}
-                                            {results.mismatches.length === 0 && (
-                                                <tr>
-                                                    <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
-                                                        <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
-                                                        No value mismatches found for matched records.
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-
-                            {activeTab === 'missing_ext' && (
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-gray-200">
-                                        <thead className="bg-gray-50">
-                                            <tr>
-                                                {keyColumns.map(col => (
-                                                    <th key={col} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{col}</th>
-                                                ))}
-                                                {/* Show other columns if available in data, for now just keys */}
-                                            </tr>
-                                        </thead>
-                                        <tbody className="bg-white divide-y divide-gray-200">
-                                            {results.missing_in_external.map((row: any, idx: number) => (
-                                                <tr key={idx} className="hover:bg-gray-50">
-                                                    {keyColumns.map(col => (
-                                                        <td key={col} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row[col]}</td>
-                                                    ))}
-                                                </tr>
-                                            ))}
-                                            {results.missing_in_external.length === 0 && (
-                                                <tr>
-                                                    <td colSpan={keyColumns.length} className="px-6 py-12 text-center text-gray-500">
-                                                        All internal records found in external data.
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-
-                            {activeTab === 'missing_int' && (
-                                <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-gray-200">
-                                        <thead className="bg-gray-50">
-                                            <tr>
-                                                {keyColumns.map(col => (
-                                                    <th key={col} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{col}</th>
-                                                ))}
-                                            </tr>
-                                        </thead>
-                                        <tbody className="bg-white divide-y divide-gray-200">
-                                            {results.missing_in_internal.map((row: any, idx: number) => (
-                                                <tr key={idx} className="hover:bg-gray-50">
-                                                    {keyColumns.map(col => (
-                                                        <td key={col} className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{row[col]}</td>
-                                                    ))}
-                                                </tr>
-                                            ))}
-                                            {results.missing_in_internal.length === 0 && (
-                                                <tr>
-                                                    <td colSpan={keyColumns.length} className="px-6 py-12 text-center text-gray-500">
-                                                        All external records found in internal data.
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                    )}
                 </div>
             )}
         </div>

@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
-import { FileText, BarChart2, PieChart as PieIcon, Activity, AlertCircle } from 'lucide-react';
+import { FileText, BarChart2, PieChart as PieIcon, Activity, AlertCircle, Grid, Sparkles } from 'lucide-react';
 
 interface AnalyticsViewProps {
   // Add props if needed
 }
 
 interface FileMeta {
-  filename: str;
+  filename: string;
   columns: string[];
   shape: [number, number];
   head: any[];
@@ -34,8 +34,16 @@ export function AnalyticsView() {
   const [summary, setSummary] = useState<SummaryStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Tabs
+  const [activeTab, setActiveTab] = useState<'distribution' | 'correlation'>('distribution');
+
+  // Distribution State
   const [selectedColumn, setSelectedColumn] = useState<string>('');
   const [chartData, setChartData] = useState<any>(null);
+
+  // Correlation State
+  const [correlationData, setCorrelationData] = useState<any>(null);
 
   // Fetch file list on mount
   useEffect(() => {
@@ -58,6 +66,7 @@ export function AnalyticsView() {
     setError(null);
     setSummary(null);
     setChartData(null);
+    setCorrelationData(null);
     setSelectedColumn('');
 
     fetch('http://localhost:8000/analytics/summary', {
@@ -82,7 +91,7 @@ export function AnalyticsView() {
 
   // Fetch chart data when column changes
   useEffect(() => {
-    if (!selectedFile || !selectedColumn) return;
+    if (!selectedFile || !selectedColumn || activeTab !== 'distribution') return;
 
     fetch('http://localhost:8000/analytics/distribution', {
       method: 'POST',
@@ -98,7 +107,34 @@ export function AnalyticsView() {
         }
       })
       .catch(err => console.error("Failed to fetch chart data:", err));
-  }, [selectedFile, selectedColumn]);
+  }, [selectedFile, selectedColumn, activeTab]);
+
+  // Fetch correlation data when tab changes
+  useEffect(() => {
+    if (!selectedFile || activeTab !== 'correlation') return;
+    if (correlationData) return; // Already fetched
+
+    fetch('http://localhost:8000/analytics/correlation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ file_id: selectedFile })
+    })
+      .then(res => res.json())
+      .then(data => setCorrelationData(data))
+      .catch(err => console.error("Failed to fetch correlation:", err));
+  }, [selectedFile, activeTab]);
+
+  // Helper for heatmap color
+  const getCorrelationColor = (value: number) => {
+    if (value === 1) return 'bg-indigo-600 text-white';
+    if (value > 0.7) return 'bg-indigo-500 text-white';
+    if (value > 0.4) return 'bg-indigo-300 text-white';
+    if (value > 0) return 'bg-indigo-100 text-indigo-900';
+    if (value === 0) return 'bg-gray-50 text-gray-400';
+    if (value > -0.4) return 'bg-red-100 text-red-900';
+    if (value > -0.7) return 'bg-red-300 text-white';
+    return 'bg-red-500 text-white';
+  };
 
   return (
     <div className="h-full overflow-auto p-8 bg-gray-50">
@@ -194,98 +230,174 @@ export function AnalyticsView() {
               </div>
             </div>
 
-            {/* Main Content Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-              {/* Left Column: Column List */}
-              <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="p-4 border-b border-gray-100 bg-gray-50">
-                  <h3 className="font-semibold text-gray-900">Data Columns</h3>
-                </div>
-                <div className="overflow-y-auto max-h-[600px]">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {summary.columns.map((col) => (
-                        <tr
-                          key={col.name}
-                          onClick={() => setSelectedColumn(col.name)}
-                          className={`cursor-pointer hover:bg-indigo-50 transition-colors ${selectedColumn === col.name ? 'bg-indigo-50' : ''}`}
-                        >
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900 truncate max-w-[150px]">{col.name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500">{col.type}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Right Column: Visualization */}
-              <div className="lg:col-span-2 space-y-6">
-
-                {/* Chart Card */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 min-h-[400px]">
-                  <div className="mb-6">
-                    <h3 className="text-lg font-semibold text-gray-900">Distribution: {selectedColumn}</h3>
-                    <p className="text-sm text-gray-500">
-                      {chartData?.type === 'numeric' ? 'Histogram of values' : 'Top 10 most frequent values'}
-                    </p>
-                  </div>
-
-                  <div className="h-[300px] w-full">
-                    {chartData && chartData.data.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData.data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                          <XAxis dataKey="name" />
-                          <YAxis />
-                          <Tooltip
-                            contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                          />
-                          <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="h-full flex items-center justify-center text-gray-400">
-                        No data available for this column
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Additional Insights (Placeholder for AI) */}
-                <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
-                  <div className="flex items-start space-x-4">
-                    <div className="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
-                      <Sparkles className="h-6 w-6 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold mb-2">AI Insights</h3>
-                      <p className="text-indigo-100 text-sm mb-4">
-                        Based on the analysis of <strong>{selectedColumn}</strong>, here are some automated observations:
-                      </p>
-                      <ul className="space-y-2 text-sm">
-                        <li className="flex items-center">
-                          <span className="w-1.5 h-1.5 bg-white rounded-full mr-2"></span>
-                          Data distribution appears {chartData?.type === 'numeric' ? 'normal' : 'skewed'}.
-                        </li>
-                        <li className="flex items-center">
-                          <span className="w-1.5 h-1.5 bg-white rounded-full mr-2"></span>
-                          {summary.missing_values > 0 ? `${summary.missing_values} missing values detected across the dataset.` : 'Data quality is high with no missing values.'}
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
+            {/* Tabs */}
+            <div className="border-b border-gray-200">
+              <nav className="-mb-px flex space-x-8">
+                <button
+                  onClick={() => setActiveTab('distribution')}
+                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeTab === 'distribution'
+                      ? 'border-indigo-500 text-indigo-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                >
+                  <BarChart2 className="w-4 h-4" />
+                  Distribution Analysis
+                </button>
+                <button
+                  onClick={() => setActiveTab('correlation')}
+                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeTab === 'correlation'
+                      ? 'border-indigo-500 text-indigo-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                >
+                  <Grid className="w-4 h-4" />
+                  Correlation Matrix
+                </button>
+              </nav>
             </div>
+
+            {/* Tab Content */}
+            {activeTab === 'distribution' && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Left Column: Column List */}
+                <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="p-4 border-b border-gray-100 bg-gray-50">
+                    <h3 className="font-semibold text-gray-900">Data Columns</h3>
+                  </div>
+                  <div className="overflow-y-auto max-h-[600px]">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {summary.columns.map((col) => (
+                          <tr
+                            key={col.name}
+                            onClick={() => setSelectedColumn(col.name)}
+                            className={`cursor-pointer hover:bg-indigo-50 transition-colors ${selectedColumn === col.name ? 'bg-indigo-50' : ''}`}
+                          >
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900 truncate max-w-[150px]">{col.name}</td>
+                            <td className="px-4 py-3 text-sm text-gray-500">{col.type}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Right Column: Visualization */}
+                <div className="lg:col-span-2 space-y-6">
+                  {/* Chart Card */}
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 min-h-[400px]">
+                    <div className="mb-6">
+                      <h3 className="text-lg font-semibold text-gray-900">Distribution: {selectedColumn}</h3>
+                      <p className="text-sm text-gray-500">
+                        {chartData?.type === 'numeric' ? 'Histogram of values' : 'Top 10 most frequent values'}
+                      </p>
+                    </div>
+
+                    <div className="h-[300px] w-full">
+                      {chartData && chartData.data.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={chartData.data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                            <XAxis dataKey="name" />
+                            <YAxis />
+                            <Tooltip
+                              contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                            />
+                            <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-gray-400">
+                          No data available for this column
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Additional Insights */}
+                  <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
+                    <div className="flex items-start space-x-4">
+                      <div className="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
+                        <Sparkles className="h-6 w-6 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold mb-2">AI Insights</h3>
+                        <p className="text-indigo-100 text-sm mb-4">
+                          Based on the analysis of <strong>{selectedColumn}</strong>, here are some automated observations:
+                        </p>
+                        <ul className="space-y-2 text-sm">
+                          <li className="flex items-center">
+                            <span className="w-1.5 h-1.5 bg-white rounded-full mr-2"></span>
+                            Data distribution appears {chartData?.type === 'numeric' ? 'normal' : 'skewed'}.
+                          </li>
+                          <li className="flex items-center">
+                            <span className="w-1.5 h-1.5 bg-white rounded-full mr-2"></span>
+                            {summary.missing_values > 0 ? `${summary.missing_values} missing values detected across the dataset.` : 'Data quality is high with no missing values.'}
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'correlation' && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+                <h3 className="text-lg font-semibold text-gray-900 mb-6">Correlation Matrix (Numeric Columns)</h3>
+
+                {correlationData && correlationData.columns.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <div className="inline-block min-w-full">
+                      <div className="grid" style={{
+                        gridTemplateColumns: `auto repeat(${correlationData.columns.length}, minmax(80px, 1fr))`
+                      }}>
+                        {/* Header Row */}
+                        <div className="p-2"></div>
+                        {correlationData.columns.map((col: string) => (
+                          <div key={col} className="p-2 font-medium text-xs text-gray-500 text-center rotate-45 origin-bottom-left translate-y-4 h-24 flex items-end justify-center">
+                            {col}
+                          </div>
+                        ))}
+
+                        {/* Data Rows */}
+                        {correlationData.columns.map((rowCol: string, i: number) => (
+                          <React.Fragment key={rowCol}>
+                            <div className="p-2 font-medium text-sm text-gray-700 flex items-center justify-end pr-4">
+                              {rowCol}
+                            </div>
+                            {correlationData.columns.map((colCol: string, j: number) => {
+                              const cell = correlationData.data.find((d: any) => d.x === colCol && d.y === rowCol);
+                              const val = cell ? cell.value : 0;
+                              return (
+                                <div
+                                  key={`${rowCol}-${colCol}`}
+                                  className={`p-2 m-0.5 rounded flex items-center justify-center text-sm font-medium ${getCorrelationColor(val)}`}
+                                  title={`${rowCol} vs ${colCol}: ${val}`}
+                                >
+                                  {val}
+                                </div>
+                              );
+                            })}
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    Not enough numeric columns to calculate correlations.
+                  </div>
+                )}
+              </div>
+            )}
+
           </>
         )}
 
@@ -301,27 +413,4 @@ export function AnalyticsView() {
       </div>
     </div>
   );
-}
-
-function Sparkles(props: any) {
-  return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-      <path d="M5 3v4" />
-      <path d="M9 3v4" />
-      <path d="M3 5h4" />
-      <path d="M3 9h4" />
-    </svg>
-  )
 }

@@ -1,432 +1,253 @@
-import { useState, useEffect, useRef } from 'react';
-import { Upload, FileSpreadsheet, ArrowRight, Code, Play, CheckCircle, AlertCircle, MessageSquare, Send, Bot, User } from 'lucide-react';
-
-interface SchemaField {
-    name: string;
-    type: string;
-    description: string;
-}
-
-interface Schema {
-    name: string;
-    fields: SchemaField[];
-}
-
-interface ChatMessage {
-    id: string;
-    role: 'user' | 'assistant';
-    content: string;
-    type?: 'text' | 'plan' | 'code' | 'error';
-    metadata?: any;
-}
+import { useState } from 'react';
+import { Plus, Play, Save, Sparkles, Wand2, Upload as UploadIcon, Database, Settings, Download } from 'lucide-react';
+import { PipelineCanvas } from './PipelineCanvas';
 
 export function SmartTransformView() {
-    // Transform State
-    const [step, setStep] = useState(1);
-    const [referenceFile, setReferenceFile] = useState<File | null>(null);
-    const [sourceFile, setSourceFile] = useState<string>('');
-    const [availableFiles, setAvailableFiles] = useState<any[]>([]);
-    const [schema, setSchema] = useState<Schema | null>(null);
-    const [mapping, setMapping] = useState<Record<string, string>>({});
-    const [generatedCode, setGeneratedCode] = useState('');
-    const [transformResult, setTransformResult] = useState<any>(null);
-    const [loading, setLoading] = useState(false);
+    const [selectedNode, setSelectedNode] = useState<string | null>(null);
+    const [naturalLanguageInput, setNaturalLanguageInput] = useState('');
 
-    // Chat State
-    const [chatInput, setChatInput] = useState('');
-    const [messages, setMessages] = useState<ChatMessage[]>([
-        { id: '1', role: 'assistant', content: '안녕하세요! 데이터 변환이나 분석에 대해 무엇이든 물어보세요. (예: "상위 5개 행 보여줘")' }
-    ]);
-    const [isChatLoading, setIsChatLoading] = useState(false);
-    const chatEndRef = useRef<HTMLDivElement>(null);
-
-    // Fetch available files on mount
-    useEffect(() => {
-        fetch('http://localhost:8000/data/list')
-            .then(res => res.json())
-            .then(data => setAvailableFiles(data))
-            .catch(err => console.error(err));
-    }, []);
-
-    // Scroll to bottom of chat
-    useEffect(() => {
-        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
-
-    const handleReferenceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            setReferenceFile(file);
-            setLoading(true);
-
-            try {
-                const res = await fetch('http://localhost:8000/smart/parse', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filename: file.name })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    setSchema(data.schema);
-                    setStep(2);
-                }
-            } catch (err) {
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        }
+    const handleSmartBuild = () => {
+        // AI가 자연어를 파이프라인으로 변환
+        alert('AI가 파이프라인을 자동 생성합니다: ' + naturalLanguageInput);
     };
 
-    const handleAutoMap = () => {
-        if (!schema || !sourceFile) return;
-        const newMapping: Record<string, string> = {};
-        const sourceColumns = availableFiles.find(f => f.filename === sourceFile)?.columns || [];
-
-        schema.fields.forEach(field => {
-            const match = sourceColumns.find((col: string) =>
-                col.toLowerCase().includes(field.name.toLowerCase()) ||
-                field.name.toLowerCase().includes(col.toLowerCase())
-            );
-            if (match) {
-                newMapping[field.name] = match;
-            }
-        });
-        setMapping(newMapping);
-    };
-
-    const handleGenerateCode = async () => {
-        setLoading(true);
-        try {
-            const res = await fetch('http://localhost:8000/smart/generate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    source_filename: sourceFile,
-                    mapping: mapping
-                })
-            });
-            const data = await res.json();
-            if (data.success) {
-                setGeneratedCode(data.code);
-                setStep(3);
-            }
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleTransform = async () => {
-        setLoading(true);
-        try {
-            const res = await fetch('http://localhost:8000/smart/transform', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    file_id: sourceFile, // Changed to file_id to match backend
-                    mapping: mapping,
-                    output_name: `transformed_${sourceFile.split('.')[0]}`
-                })
-            });
-            const data = await res.json();
-            if (data.success) {
-                setTransformResult(data.metadata);
-                setStep(4);
-            }
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleSendMessage = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!chatInput.trim()) return;
-
-        const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', content: chatInput };
-        setMessages(prev => [...prev, userMsg]);
-        setChatInput('');
-        setIsChatLoading(true);
-
-        try {
-            const res = await fetch('http://localhost:8000/chat', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: userMsg.content })
-            });
-            const data = await res.json();
-
-            if (data.success) {
-                const aiMsg: ChatMessage = {
-                    id: (Date.now() + 1).toString(),
-                    role: 'assistant',
-                    content: data.summary || "작업을 완료했습니다.",
-                    type: 'text'
-                };
-                setMessages(prev => [...prev, aiMsg]);
-
-                // If data returned, update preview
-                if (data.data) {
-                    setTransformResult({
-                        filename: "AI Result",
-                        columns: data.columns,
-                        shape: [data.data.length, data.columns.length],
-                        head: data.data.slice(0, 5)
-                    });
-                }
-            } else {
-                setMessages(prev => [...prev, {
-                    id: (Date.now() + 1).toString(),
-                    role: 'assistant',
-                    content: `오류가 발생했습니다: ${data.error}`,
-                    type: 'error'
-                }]);
-            }
-        } catch (err) {
-            setMessages(prev => [...prev, {
-                id: (Date.now() + 1).toString(),
-                role: 'assistant',
-                content: "서버 통신 중 오류가 발생했습니다.",
-                type: 'error'
-            }]);
-        } finally {
-            setIsChatLoading(false);
-        }
+    const onDragStart = (event: React.DragEvent, nodeType: string, label: string) => {
+        event.dataTransfer.setData('application/reactflow', nodeType);
+        event.dataTransfer.setData('application/label', label);
+        event.dataTransfer.effectAllowed = 'move';
     };
 
     return (
-        <div className="h-full flex overflow-hidden bg-gray-50">
-            {/* Left Sidebar: Chat Interface */}
-            <div className="w-96 bg-white border-r border-gray-200 flex flex-col shadow-lg z-10">
-                <div className="p-4 border-b border-gray-100 bg-gray-50/50">
-                    <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                        <Bot className="w-5 h-5 text-violet-600" />
-                        Talk to Excel
-                    </h2>
-                    <p className="text-xs text-gray-500">AI에게 데이터 분석을 요청하세요</p>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                    {messages.map(msg => (
-                        <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[85%] rounded-2xl p-3 text-sm ${msg.role === 'user'
-                                    ? 'bg-violet-600 text-white rounded-br-none'
-                                    : 'bg-gray-100 text-gray-800 rounded-bl-none'
-                                }`}>
-                                {msg.content}
-                            </div>
-                        </div>
-                    ))}
-                    {isChatLoading && (
-                        <div className="flex justify-start">
-                            <div className="bg-gray-100 rounded-2xl rounded-bl-none p-3 flex items-center gap-2">
-                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                            </div>
-                        </div>
-                    )}
-                    <div ref={chatEndRef} />
-                </div>
-
-                <div className="p-4 border-t border-gray-100 bg-white">
-                    <form onSubmit={handleSendMessage} className="relative">
-                        <input
-                            type="text"
-                            value={chatInput}
-                            onChange={(e) => setChatInput(e.target.value)}
-                            placeholder="메시지를 입력하세요..."
-                            className="w-full pl-4 pr-12 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 transition-all"
-                            disabled={isChatLoading}
-                        />
-                        <button
-                            type="submit"
-                            disabled={!chatInput.trim() || isChatLoading}
-                            className="absolute right-2 top-2 p-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                        >
-                            <Send className="w-4 h-4" />
-                        </button>
-                    </form>
-                </div>
-            </div>
-
-            {/* Right Content: Transform Wizard */}
-            <div className="flex-1 overflow-auto p-8">
-                <div className="max-w-5xl mx-auto space-y-8">
-
-                    {/* Header */}
-                    <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 shadow-xl shadow-purple-100/50">
+        <div className="h-full flex flex-col bg-gray-50">
+            {/* Header */}
+            <div className="p-6 pb-0">
+                <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 shadow-xl shadow-purple-100/50 mb-6">
+                    <div className="flex items-center justify-between mb-6">
                         <div className="flex items-center gap-4">
-                            <div className="w-16 h-16 bg-gradient-to-br from-violet-400 to-violet-600 rounded-2xl flex items-center justify-center shadow-lg shadow-violet-200">
-                                <FileSpreadsheet className="w-8 h-8 text-white" />
+                            <div className="w-14 h-14 bg-gradient-to-br from-purple-400 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-200">
+                                <Sparkles className="w-7 h-7 text-white" />
                             </div>
                             <div>
-                                <h1 className="text-3xl text-gray-900 mb-1">Smart Transformer</h1>
-                                <p className="text-gray-600">Transform data using AI or Manual Mapping</p>
+                                <h1 className="text-2xl font-bold text-gray-900">Smart Transform</h1>
+                                <p className="text-sm text-gray-600">AI 기반 데이터 변환 파이프라인</p>
                             </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <button className="flex items-center gap-2 px-6 py-3 bg-white hover:bg-gray-50 text-gray-700 rounded-2xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300">
+                                <Save className="w-5 h-5" />
+                                <span>Save</span>
+                            </button>
+                            <button className="flex items-center gap-2 px-6 py-3 bg-gradient-to-br from-emerald-400 to-emerald-600 hover:from-emerald-500 hover:to-emerald-700 text-white rounded-2xl shadow-lg shadow-emerald-200 hover:shadow-xl hover:scale-105 transition-all duration-300">
+                                <Play className="w-5 h-5" />
+                                <span>Run Pipeline</span>
+                            </button>
                         </div>
                     </div>
 
-                    {/* Result Preview (Top Priority if available) */}
-                    {transformResult && (
-                        <div className="bg-white rounded-3xl p-8 shadow-xl border border-violet-100 animate-in fade-in slide-in-from-bottom-4">
-                            <div className="flex items-center justify-between mb-6">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                                        <CheckCircle className="w-6 h-6 text-green-600" />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-xl font-bold text-gray-900">Result Preview</h3>
-                                        <p className="text-gray-500">
-                                            {transformResult.filename ? `Saved as ${transformResult.filename}` : "Generated from AI Analysis"}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-                                    {transformResult.shape[0]} rows • {transformResult.shape[1]} columns
-                                </div>
+                    {/* Always Visible Smart Builder Panel */}
+                    <div className="p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl border-2 border-purple-200">
+                        <div className="flex items-center gap-3 mb-4">
+                            <div className="w-8 h-8 bg-gradient-to-br from-purple-400 to-purple-600 rounded-lg flex items-center justify-center shadow-lg">
+                                <Wand2 className="w-4 h-4 text-white" />
                             </div>
-
-                            <div className="overflow-x-auto border border-gray-100 rounded-xl">
-                                <table className="w-full text-sm text-left">
-                                    <thead className="bg-gray-50 text-gray-600 font-medium">
-                                        <tr>
-                                            {transformResult.columns.map((col: string) => (
-                                                <th key={col} className="px-4 py-3 border-b border-gray-200 whitespace-nowrap">{col}</th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {transformResult.head.map((row: any, i: number) => (
-                                            <tr key={i} className="hover:bg-gray-50 transition-colors">
-                                                {transformResult.columns.map((col: string) => (
-                                                    <td key={col} className="px-4 py-3 text-gray-700 whitespace-nowrap">{row[col]}</td>
-                                                ))}
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900">Smart Filter</h3>
+                                <p className="text-xs text-gray-600">자연어로 파이프라인을 자동 생성하세요</p>
                             </div>
+                        </div>
 
-                            <div className="mt-4 flex justify-end">
+                        <div className="flex gap-4">
+                            <textarea
+                                value={naturalLanguageInput}
+                                onChange={(e) => setNaturalLanguageInput(e.target.value)}
+                                placeholder="예: '엑셀 데이터를 불러와서 진행중인 프로젝트만 필터링하고, 예산별로 그룹화한 다음 차트로 시각화해줘'"
+                                className="flex-1 h-24 px-4 py-3 bg-white border-2 border-purple-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-400 resize-none transition-all"
+                            />
+                            <div className="flex flex-col gap-2 w-48">
                                 <button
-                                    onClick={() => setTransformResult(null)}
-                                    className="text-sm text-gray-500 hover:text-gray-900 underline"
+                                    onClick={handleSmartBuild}
+                                    disabled={!naturalLanguageInput.trim()}
+                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-br from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:from-gray-300 disabled:to-gray-400 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all disabled:scale-100 disabled:cursor-not-allowed text-sm font-bold"
                                 >
-                                    Clear Result
+                                    <Sparkles className="w-4 h-4" />
+                                    <span>자동 생성</span>
+                                </button>
+                                <button className="flex-1 px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 rounded-xl shadow-md hover:shadow-lg transition-all text-sm font-medium">
+                                    예시 보기
                                 </button>
                             </div>
                         </div>
-                    )}
 
-                    {/* Steps (Only show if not in result mode or if user wants to see them) */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        {/* Step 1: Reference & Source */}
-                        <div className={`bg-white rounded-3xl p-6 shadow-lg transition-all ${step === 1 ? 'ring-2 ring-violet-500' : 'opacity-70'}`}>
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="w-8 h-8 rounded-full bg-violet-100 text-violet-600 flex items-center justify-center font-bold">1</div>
-                                <h3 className="font-semibold text-gray-900">Select Files</h3>
-                            </div>
-
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Reference File</label>
-                                    <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center hover:bg-gray-50 transition-colors cursor-pointer relative group">
-                                        <input type="file" onChange={handleReferenceUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                                        <Upload className="w-6 h-6 text-gray-400 mx-auto mb-2 group-hover:text-violet-500 transition-colors" />
-                                        <span className="text-sm text-gray-500 group-hover:text-violet-600">{referenceFile ? referenceFile.name : "Upload Reference"}</span>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Source Data</label>
-                                    <select
-                                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-500 transition-all"
-                                        value={sourceFile}
-                                        onChange={(e) => setSourceFile(e.target.value)}
-                                    >
-                                        <option value="">Select a file...</option>
-                                        {availableFiles.map((f: any) => (
-                                            <option key={f.filename} value={f.filename}>{f.filename}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Step 2: Mapping */}
-                        <div className={`bg-white rounded-3xl p-6 shadow-lg transition-all ${step === 2 ? 'ring-2 ring-violet-500' : 'opacity-70'}`}>
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="w-8 h-8 rounded-full bg-violet-100 text-violet-600 flex items-center justify-center font-bold">2</div>
-                                <h3 className="font-semibold text-gray-900">Map Columns</h3>
-                            </div>
-
-                            {schema && sourceFile ? (
-                                <div className="space-y-4">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-gray-500 truncate max-w-[150px]">{schema.name}</span>
-                                        <button onClick={handleAutoMap} className="text-xs text-violet-600 font-medium hover:underline">Auto-Map</button>
-                                    </div>
-                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                                        {schema.fields.map(field => (
-                                            <div key={field.name} className="flex items-center gap-2">
-                                                <div className="flex-1 text-sm font-medium text-gray-700 truncate" title={field.description}>{field.name}</div>
-                                                <ArrowRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                                                <select
-                                                    className="flex-1 p-2 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-violet-500 outline-none"
-                                                    value={mapping[field.name] || ''}
-                                                    onChange={(e) => setMapping({ ...mapping, [field.name]: e.target.value })}
-                                                >
-                                                    <option value="">Skip</option>
-                                                    {availableFiles.find(f => f.filename === sourceFile)?.columns.map((col: string) => (
-                                                        <option key={col} value={col}>{col}</option>
-                                                    ))}
-                                                </select>
-                                            </div>
-                                        ))}
-                                    </div>
-                                    <button
-                                        onClick={handleGenerateCode}
-                                        className="w-full py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
-                                        disabled={loading}
-                                    >
-                                        <Code className="w-4 h-4" /> Generate Code
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="text-center py-8 text-gray-400 text-sm">Complete Step 1 first</div>
-                            )}
-                        </div>
-
-                        {/* Step 3: Transform */}
-                        <div className={`bg-white rounded-3xl p-6 shadow-lg transition-all ${step >= 3 ? 'ring-2 ring-violet-500' : 'opacity-70'}`}>
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="w-8 h-8 rounded-full bg-violet-100 text-violet-600 flex items-center justify-center font-bold">3</div>
-                                <h3 className="font-semibold text-gray-900">Transform</h3>
-                            </div>
-
-                            {generatedCode ? (
-                                <div className="space-y-4">
-                                    <div className="bg-gray-900 rounded-xl p-4 overflow-x-auto max-h-40 custom-scrollbar">
-                                        <pre className="text-xs text-green-400 font-mono">{generatedCode}</pre>
-                                    </div>
-                                    <button
-                                        onClick={handleTransform}
-                                        className="w-full py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-700 hover:to-fuchsia-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2 shadow-lg shadow-violet-200"
-                                        disabled={loading}
-                                    >
-                                        {loading ? 'Processing...' : <><Play className="w-4 h-4" /> Run Transformation</>}
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="text-center py-8 text-gray-400 text-sm">Complete Step 2 first</div>
-                            )}
+                        {/* Quick Templates */}
+                        <div className="mt-4 flex gap-3">
+                            <button
+                                onClick={() => setNaturalLanguageInput('엑셀을 불러와서 완료율 기준으로 정렬하고 상위 10개만 보여줘')}
+                                className="px-3 py-2 bg-white hover:bg-purple-50 border border-purple-200 rounded-lg text-left transition-all hover:scale-102 flex items-center gap-2"
+                            >
+                                <span className="text-xs font-bold text-purple-600">템플릿 1</span>
+                                <span className="text-xs text-gray-700">상위 데이터 필터링</span>
+                            </button>
+                            <button
+                                onClick={() => setNaturalLanguageInput('상태별로 그룹화하고 각 그룹의 평균 예산을 계산해줘')}
+                                className="px-3 py-2 bg-white hover:bg-purple-50 border border-purple-200 rounded-lg text-left transition-all hover:scale-102 flex items-center gap-2"
+                            >
+                                <span className="text-xs font-bold text-purple-600">템플릿 2</span>
+                                <span className="text-xs text-gray-700">그룹별 집계</span>
+                            </button>
+                            <button
+                                onClick={() => setNaturalLanguageInput('날짜별 트렌드를 분석하고 예측 모델을 만들어줘')}
+                                className="px-3 py-2 bg-white hover:bg-purple-50 border border-purple-200 rounded-lg text-left transition-all hover:scale-102 flex items-center gap-2"
+                            >
+                                <span className="text-xs font-bold text-purple-600">템플릿 3</span>
+                                <span className="text-xs text-gray-700">트렌드 예측</span>
+                            </button>
                         </div>
                     </div>
+                </div>
+            </div>
 
+            <div className="flex-1 flex overflow-hidden gap-6 px-6 pb-6">
+                {/* Sidebar - Node Library */}
+                <div className="w-72 bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl shadow-purple-100/50 overflow-auto flex flex-col">
+                    <div className="p-6">
+                        <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+                            <div className="w-8 h-8 bg-gradient-to-br from-purple-400 to-purple-600 rounded-lg flex items-center justify-center">
+                                <Plus className="w-4 h-4 text-white" />
+                            </div>
+                            Node Library
+                        </h3>
+
+                        <div className="space-y-6">
+                            <div>
+                                <div className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">Input</div>
+                                <div
+                                    draggable
+                                    onDragStart={(e) => onDragStart(e, 'input', 'Data Source')}
+                                    className="p-4 bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-2xl shadow-md hover:shadow-lg cursor-move hover:scale-105 transition-all duration-300"
+                                >
+                                    <div className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-xl flex items-center justify-center mb-3 shadow-lg shadow-emerald-200">
+                                        <UploadIcon className="w-6 h-6 text-white" />
+                                    </div>
+                                    <div className="text-sm font-bold text-gray-900 mb-1">Data Source</div>
+                                    <div className="text-xs text-gray-600">Excel/CSV input</div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">Transform</div>
+                                <div className="space-y-3">
+                                    {[
+                                        { name: 'Filter Rows', desc: '조건별 필터링', icon: '🔍', type: 'default' },
+                                        { name: 'Group By', desc: '그룹화 및 집계', icon: '📊', type: 'default' },
+                                        { name: 'Join Data', desc: '데이터 결합', icon: '🔗', type: 'default' },
+                                        { name: 'Calculate', desc: '계산 및 수식', icon: '🧮', type: 'default' },
+                                    ].map((node) => (
+                                        <div
+                                            key={node.name}
+                                            draggable
+                                            onDragStart={(e) => onDragStart(e, node.type, node.name)}
+                                            className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-2xl shadow-md hover:shadow-lg cursor-move hover:scale-105 transition-all duration-300"
+                                        >
+                                            <div className="text-lg mb-2">{node.icon}</div>
+                                            <div className="text-sm font-bold text-gray-900 mb-1">{node.name}</div>
+                                            <div className="text-xs text-gray-600">{node.desc}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">AI Powered</div>
+                                <div className="space-y-3">
+                                    {[
+                                        { name: 'Natural Language', desc: '자연어 변환', icon: '✨', type: 'default' },
+                                        { name: 'Smart Format', desc: '레퍼런스 기반', icon: '🎨', type: 'default' },
+                                        { name: 'Auto Insight', desc: '자동 분석', icon: '💡', type: 'default' },
+                                    ].map((node) => (
+                                        <div
+                                            key={node.name}
+                                            draggable
+                                            onDragStart={(e) => onDragStart(e, node.type, node.name)}
+                                            className="p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-2xl shadow-md hover:shadow-lg cursor-move hover:scale-105 transition-all duration-300 border-2 border-purple-200"
+                                        >
+                                            <div className="text-lg mb-2">{node.icon}</div>
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <Sparkles className="w-4 h-4 text-purple-600" />
+                                                <div className="text-sm font-bold text-gray-900">{node.name}</div>
+                                            </div>
+                                            <div className="text-xs text-gray-600">{node.desc}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <div className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">Output</div>
+                                <div
+                                    draggable
+                                    onDragStart={(e) => onDragStart(e, 'output', 'Export')}
+                                    className="p-4 bg-gradient-to-br from-orange-50 to-orange-100 rounded-2xl shadow-md hover:shadow-lg cursor-move hover:scale-105 transition-all duration-300"
+                                >
+                                    <div className="text-lg mb-2">📤</div>
+                                    <div className="text-sm font-bold text-gray-900 mb-1">Export</div>
+                                    <div className="text-xs text-gray-600">결과물 저장</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Canvas */}
+                <div className="flex-1 bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl shadow-purple-100/50 overflow-hidden">
+                    <PipelineCanvas selectedNode={selectedNode} onSelectNode={setSelectedNode} />
+                </div>
+
+                {/* Properties Panel */}
+                <div className="w-80 bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl shadow-purple-100/50 overflow-auto">
+                    <div className="p-6">
+                        {selectedNode ? (
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900 mb-6 flex items-center gap-2">
+                                    <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-blue-600 rounded-lg flex items-center justify-center">
+                                        <Sparkles className="w-4 h-4 text-white" />
+                                    </div>
+                                    Node Properties
+                                </h3>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Node Name</label>
+                                        <input
+                                            type="text"
+                                            className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-gray-900 focus:outline-none focus:border-blue-300 focus:bg-white transition-all"
+                                            placeholder="Enter name..."
+                                            defaultValue={selectedNode}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                                        <textarea
+                                            className="w-full px-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-xl text-gray-900 focus:outline-none focus:border-blue-300 focus:bg-white resize-none transition-all"
+                                            rows={4}
+                                            placeholder="Enter description..."
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Configuration</label>
+                                        <div className="p-4 bg-gradient-to-br from-blue-50 to-purple-50 rounded-xl text-sm text-gray-600">
+                                            Configure node settings here
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center py-16">
+                                <div className="w-20 h-20 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <Sparkles className="w-10 h-10 text-gray-400" />
+                                </div>
+                                <p className="text-gray-500">Select a node to view properties</p>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

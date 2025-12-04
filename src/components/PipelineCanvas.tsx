@@ -1,91 +1,84 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useRef, Dispatch, SetStateAction } from 'react';
 import ReactFlow, {
-  Node,
-  Edge,
-  Controls,
   Background,
+  Controls,
+  MiniMap,
   useNodesState,
   useEdgesState,
-  MarkerType
+  addEdge,
+  Connection,
+  Edge,
+  Node,
+  ReactFlowProvider,
+  useReactFlow,
+  OnNodesChange,
+  OnEdgesChange,
+  OnConnect
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Database, Filter, GitMerge, Calculator, Wand2, Download, FileSpreadsheet } from 'lucide-react';
+
+const initialNodes: Node[] = [
+  { id: '1', position: { x: 100, y: 100 }, data: { label: 'Input: Sales Data' }, type: 'input' },
+  { id: '2', position: { x: 300, y: 100 }, data: { label: 'Filter: Region=Seoul' } },
+  { id: '3', position: { x: 500, y: 100 }, data: { label: 'Output: Excel' }, type: 'output' },
+];
+
+const initialEdges: Edge[] = [
+  { id: 'e1-2', source: '1', target: '2', animated: true },
+  { id: 'e2-3', source: '2', target: '3', animated: true },
+];
+
+let id = 0;
+const getId = () => `dndnode_${id++}`;
 
 interface PipelineCanvasProps {
   selectedNode: string | null;
   onSelectNode: (nodeId: string | null) => void;
 }
 
-const nodeTypes = {
-  // We can define custom node types here if needed, but for now we'll use default with custom styles
-};
+function PipelineCanvasContent({ selectedNode, onSelectNode }: PipelineCanvasProps) {
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const { project } = useReactFlow();
 
-export function PipelineCanvas({ selectedNode, onSelectNode }: PipelineCanvasProps) {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const onConnect = useCallback((params: Connection) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
 
-  const fetchLineage = useCallback(async () => {
-    try {
-      const res = await fetch('http://localhost:8000/lineage');
-      const data = await res.json();
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+  }, []);
 
-      // Transform backend nodes to ReactFlow nodes
-      const flowNodes: Node[] = data.nodes.map((n: any) => ({
-        id: n.id,
-        type: 'default', // Using default for simplicity, can be 'custom'
-        data: {
-          label: (
-            <div className="flex flex-col items-center">
-              <div className={`p-3 rounded-xl mb-2 shadow-md ${n.data.type === 'source' ? 'bg-emerald-100 text-emerald-600' :
-                  n.data.type === 'transform' ? 'bg-blue-100 text-blue-600' :
-                    n.data.type === 'output' ? 'bg-orange-100 text-orange-600' :
-                      'bg-purple-100 text-purple-600'
-                }`}>
-                {n.data.type === 'source' && <Database className="w-5 h-5" />}
-                {n.data.type === 'transform' && <GitMerge className="w-5 h-5" />}
-                {n.data.type === 'output' && <Download className="w-5 h-5" />}
-                {n.data.type === 'ai' && <Wand2 className="w-5 h-5" />}
-              </div>
-              <div className="font-medium text-sm text-gray-900">{n.data.label}</div>
-              <div className="text-xs text-gray-500 capitalize">{n.data.type}</div>
-            </div>
-          ),
-          originalData: n.data // Keep original data for inspector
-        },
-        position: n.position,
-        style: {
-          background: '#fff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '12px',
-          padding: '10px',
-          minWidth: '150px',
-          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-        }
-      }));
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
 
-      const flowEdges: Edge[] = data.edges.map((e: any) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        label: e.label,
-        animated: true,
-        style: { stroke: '#8b5cf6', strokeWidth: 2 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' },
-      }));
+      const type = event.dataTransfer.getData('application/reactflow');
+      const label = event.dataTransfer.getData('application/label');
 
-      setNodes(flowNodes);
-      setEdges(flowEdges);
-    } catch (err) {
-      console.error("Failed to fetch lineage:", err);
-    }
-  }, [setNodes, setEdges]);
+      if (typeof type === 'undefined' || !type) {
+        return;
+      }
 
-  useEffect(() => {
-    fetchLineage();
-    // Poll every 5 seconds to update graph
-    const interval = setInterval(fetchLineage, 5000);
-    return () => clearInterval(interval);
-  }, [fetchLineage]);
+      const position = reactFlowWrapper.current?.getBoundingClientRect();
+      if (!position) return;
+
+      const p = project({
+        x: event.clientX - position.left,
+        y: event.clientY - position.top,
+      });
+
+      const newNode: Node = {
+        id: getId(),
+        type,
+        position: p,
+        data: { label: label },
+      };
+
+      setNodes((nds) => nds.concat(newNode));
+    },
+    [project, setNodes]
+  );
 
   const onNodeClick = (_: React.MouseEvent, node: Node) => {
     onSelectNode(node.id);
@@ -96,20 +89,31 @@ export function PipelineCanvas({ selectedNode, onSelectNode }: PipelineCanvasPro
   };
 
   return (
-    <div className="w-full h-full">
+    <div className="h-full w-full" ref={reactFlowWrapper}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
         fitView
-        attributionPosition="bottom-right"
       >
-        <Background color="#ccc" gap={20} />
+        <Background />
         <Controls />
+        <MiniMap />
       </ReactFlow>
     </div>
+  );
+}
+
+export function PipelineCanvas(props: PipelineCanvasProps) {
+  return (
+    <ReactFlowProvider>
+      <PipelineCanvasContent {...props} />
+    </ReactFlowProvider>
   );
 }
