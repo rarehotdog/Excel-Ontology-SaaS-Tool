@@ -1,415 +1,431 @@
-import React, { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
-import { FileText, BarChart2, PieChart as PieIcon, Activity, AlertCircle, Grid, Sparkles } from 'lucide-react';
+import React, { useState } from 'react';
+import { ChevronDown, ChevronUp, TrendingUp, BarChart3, Lightbulb, FileText, Activity, AlertCircle } from 'lucide-react';
+import { LineChart, Line, BarChart, Bar, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 
 interface AnalyticsViewProps {
-  // Add props if needed
+  insights?: any[];
+  trendData?: any[];
+  kpiMetrics?: any[];
+  chartMetadata?: any;
 }
 
-interface FileMeta {
-  filename: string;
-  columns: string[];
-  shape: [number, number];
-  head: any[];
+type TabType = 'overview' | 'charts' | 'analysis';
+
+interface CollapsibleSection {
+  id: string;
+  title: string;
+  content: React.ReactNode;
+  icon: React.ComponentType<any>;
 }
 
-interface SummaryStats {
-  total_rows: number;
-  total_columns: number;
-  missing_values: number;
-  completeness: number;
-  columns: {
-    name: string;
-    type: string;
-    missing: number;
-    unique: number;
-  }[];
-}
+export function AnalyticsView({ insights = [], trendData = [], kpiMetrics = [], chartMetadata = {} }: AnalyticsViewProps) {
+  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['timeseries', 'distribution', 'correlation', 'dynamic-insights', 'dynamic-kpi']));
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
+  const toggleSection = (sectionId: string) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sectionId)) {
+        newSet.delete(sectionId);
+      } else {
+        newSet.add(sectionId);
+      }
+      return newSet;
+    });
+  };
 
-export function AnalyticsView() {
-  const [files, setFiles] = useState<FileMeta[]>([]);
-  const [selectedFile, setSelectedFile] = useState<string>('');
-  const [summary, setSummary] = useState<SummaryStats | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Overview sections
+  const overviewSections: CollapsibleSection[] = [
+    ...(insights.length > 0
+      ? [
+          {
+            id: 'dynamic-insights',
+            title: 'AI 분석 인사이트',
+            icon: Lightbulb,
+            content: (
+              <div className="space-y-4">
+                {insights.map((insight, idx) => (
+                  <div
+                    key={idx}
+                    className="px-5 py-4 bg-blue-50 rounded-lg border-l-4 border-blue-500"
+                  >
+                    <p className="text-sm text-blue-900 leading-relaxed">{insight}</p>
+                  </div>
+                ))}
+              </div>
+            ),
+          },
+        ]
+      : []),
+    ...(kpiMetrics.length > 0
+      ? [
+          {
+            id: 'dynamic-kpi',
+            title: '주요 지표 (KPI)',
+            icon: Activity,
+            content: (
+              <div className="grid grid-cols-2 gap-5">
+                {kpiMetrics.map((kpi, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-4 bg-${kpi.color || 'blue'}-50 rounded-lg space-y-2`}
+                  >
+                    <div
+                      className={`text-xs text-${kpi.color || 'blue'}-600 font-medium tracking-tight`}
+                    >
+                      {kpi.label}
+                    </div>
+                    <div className={`text-2xl font-bold text-${kpi.color || 'blue'}-900`}>
+                      {kpi.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ),
+          },
+        ]
+      : []),
+  ];
 
-  // Tabs
-  const [activeTab, setActiveTab] = useState<'distribution' | 'correlation'>('distribution');
+  // Charts sections - Dynamically built based on chartMetadata
+  const chartsSections: CollapsibleSection[] = [];
 
-  // Distribution State
-  const [selectedColumn, setSelectedColumn] = useState<string>('');
-  const [chartData, setChartData] = useState<any>(null);
+  // 1. Time Series Chart
+  if (chartMetadata?.time_series) {
+    chartsSections.push({
+      id: 'timeseries',
+      title: `시계열 추세 (${chartMetadata.time_series.period_label || '기간별'})`,
+      icon: TrendingUp,
+      content: (
+        <div className="h-80 w-full">
+          {trendData.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={trendData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  />
+                  <Legend />
+                  <Line 
+                    type="monotone" 
+                    dataKey="value" 
+                    stroke="#3b82f6" 
+                    strokeWidth={3} 
+                    dot={{ r: 4, fill: "#3b82f6", strokeWidth: 2, stroke: "#fff" }}
+                    activeDot={{ r: 6 }}
+                    name={chartMetadata.time_series.value_column || "값"} 
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+              {chartMetadata.time_series.reason && (
+                <p className="text-sm text-gray-600 mt-4 text-center bg-gray-50 p-3 rounded-lg">
+                  💡 {chartMetadata.time_series.reason}
+                </p>
+              )}
+            </>
+          ) : (
+             <div className="h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+               <Activity className="w-10 h-10 mb-2 opacity-20" />
+               <span>표시할 시계열 데이터가 충분하지 않습니다.</span>
+             </div>
+          )}
+        </div>
+      )
+    });
+  }
 
-  // Correlation State
-  const [correlationData, setCorrelationData] = useState<any>(null);
+  // 2. Distribution Chart
+  if (chartMetadata?.distribution) {
+    chartsSections.push({
+      id: 'distribution',
+      title: `분포 분석 (${chartMetadata.distribution.category_column || '카테고리별'})`,
+      icon: BarChart3,
+      content: (
+        <div className="h-80 w-full">
+          {chartMetadata.distribution.data && chartMetadata.distribution.data.length > 0 ? (
+            <>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartMetadata.distribution.data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#eee" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip 
+                    cursor={{ fill: 'transparent' }}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  />
+                  <Legend />
+                  <Bar 
+                    dataKey="value" 
+                    fill="#10b981" 
+                    name="건수" 
+                    radius={[4, 4, 0, 0]}
+                    barSize={40}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+              {chartMetadata.distribution.reason && (
+                <p className="text-sm text-gray-600 mt-4 text-center bg-gray-50 p-3 rounded-lg">
+                  💡 {chartMetadata.distribution.reason}
+                </p>
+              )}
+            </>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+               <BarChart3 className="w-10 h-10 mb-2 opacity-20" />
+               <span>분포 데이터를 생성할 수 없습니다.</span>
+             </div>
+          )}
+        </div>
+      )
+    });
+  }
 
-  // Fetch file list on mount
-  useEffect(() => {
-    fetch('http://localhost:8000/data/list')
-      .then(res => res.json())
-      .then(data => {
-        setFiles(data);
-        if (data.length > 0) {
-          setSelectedFile(data[0].filename);
-        }
-      })
-      .catch(err => console.error("Failed to fetch files:", err));
-  }, []);
+  // 3. Correlation Chart (if available in metadata)
+  if (chartMetadata?.correlation) {
+    chartsSections.push({
+      id: 'correlation',
+      title: '상관관계 분석',
+      icon: Activity,
+      content: (
+        <div className="h-80 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <ScatterChart margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+              <XAxis type="number" dataKey="x" name={chartMetadata.correlation.x_label || "X"} tick={{ fontSize: 12 }} />
+              <YAxis type="number" dataKey="y" name={chartMetadata.correlation.y_label || "Y"} tick={{ fontSize: 12 }} />
+              <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ borderRadius: '8px' }} />
+              <Legend />
+              <Scatter name="데이터 포인트" data={chartMetadata.correlation.data} fill="#8b5cf6" />
+            </ScatterChart>
+          </ResponsiveContainer>
+          <p className="text-sm text-gray-600 mt-4 text-center bg-gray-50 p-3 rounded-lg">
+            💡 {chartMetadata.correlation.reason || "두 변수 간의 상관관계를 보여줍니다."}
+          </p>
+        </div>
+      )
+    });
+  }
 
-  // Fetch summary when file changes
-  useEffect(() => {
-    if (!selectedFile) return;
+  // If no charts are available, show a default empty state in the charts tab
+  if (chartsSections.length === 0) {
+    chartsSections.push({
+      id: 'no-charts',
+      title: '차트 데이터 없음',
+      icon: BarChart3,
+      content: (
+        <div className="p-8 text-center text-gray-500 bg-gray-50 rounded-xl border border-gray-200">
+          <p>자동으로 생성할 수 있는 차트 유형을 찾지 못했습니다.</p>
+          <p className="text-sm mt-2">데이터에 시간, 수치, 또는 범주형 컬럼이 포함되어 있는지 확인해주세요.</p>
+        </div>
+      )
+    });
+  }
 
-    setLoading(true);
-    setError(null);
-    setSummary(null);
-    setChartData(null);
-    setCorrelationData(null);
-    setSelectedColumn('');
+  // Analysis (가공) sections - 다양한 2차 가공 결과 노출
+  const analysisSections: CollapsibleSection[] = [
+    {
+      id: 'transform-suggestions',
+      title: '가공 제안',
+      icon: FileText,
+      content: (
+        <div className="space-y-5">
+          <div className="px-6 py-5 bg-emerald-50 rounded-xl border border-emerald-100">
+            <div className="font-semibold text-emerald-900 mb-2">데이터 정제</div>
+            <p className="text-sm text-emerald-800 leading-relaxed">
+              결측치 보간, 이상치 제거, 스케일 정규화를 통해 분석 모델의 안정성과 예측 정확도를 높일 수 있습니다.
+            </p>
+          </div>
+          <div className="px-6 py-5 bg-blue-50 rounded-xl border border-blue-100">
+            <div className="font-semibold text-blue-900 mb-2">파생 변수 생성</div>
+            <p className="text-sm text-blue-800 leading-relaxed">
+              날짜 컬럼으로부터 요일/월/분기 컬럼을 생성하거나, 금액과 횟수를 결합한 효율 지표를 만들면 더 풍부한 인사이트를 얻을 수 있습니다.
+            </p>
+          </div>
+          <div className="px-6 py-5 bg-purple-50 rounded-xl border border-purple-100">
+            <div className="font-semibold text-purple-900 mb-2">그룹 집계</div>
+            <p className="text-sm text-purple-800 leading-relaxed">
+              고객·상품·기간 단위로 그룹화하여 합계, 평균, 최대/최소값을 계산하면 핵심 KPI를 빠르게 파악할 수 있습니다.
+            </p>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'future-forecast',
+      title: '앞으로의 예측',
+      icon: Lightbulb,
+      content: (
+        <div className="space-y-5">
+          <div className="px-6 py-5 bg-blue-50 rounded-xl border border-blue-100">
+            <div className="font-semibold text-blue-900 mb-2">다음 주기 예측</div>
+            <div className="text-sm text-blue-800 leading-relaxed">
+              {trendData.length > 1
+                ? (() => {
+                    const last = trendData[trendData.length - 1]?.value ?? 0;
+                    const prev = trendData[trendData.length - 2]?.value ?? last;
+                    const diff = last - prev;
+                    const dir = diff > 0 ? '증가' : diff < 0 ? '감소' : '변화 없음';
+                    const nextMin = last + diff * 0.5;
+                    const nextMax = last + diff * 1.2;
+                    return `최근 구간에서 ${dir} 추세가 관측되었습니다. 단순 추세 연장을 가정하면 다음 구간 값은 약 ${nextMin.toFixed(
+                      0
+                    )} ~ ${nextMax.toFixed(0)} 범위에서 형성될 가능성이 있습니다.`;
+                  })()
+                : '예측을 위한 시계열 데이터가 충분하지 않습니다.'}
+            </div>
+          </div>
+          <p className="text-xs text-gray-500">
+            * 이 예측은 단순 추세 기반 가정으로, 외부 요인(시즌ality, 프로모션, 정책 변경 등)은 고려하지 않았습니다.
+          </p>
+        </div>
+      )
+    },
+    {
+      id: 'ai-focus',
+      title: 'AI가 주목한 포인트',
+      icon: Activity,
+      content: (
+        <div className="space-y-5">
+          <div className="px-6 py-5 bg-gray-50 rounded-xl border border-gray-200">
+            <ul className="list-disc list-inside space-y-3 text-sm text-gray-700 leading-relaxed">
+              {(insights.slice(0, 3).length ? insights.slice(0, 3) : [
+                '데이터의 전체 분포와 극단값을 기준으로, 이상치 후보를 자동으로 태깅할 수 있습니다.',
+                '기간별 추세를 기준으로 피크 구간과 비수기 구간을 분리하면, 리소스 배분 전략 수립에 도움이 됩니다.',
+                '주요 카테고리별 비중을 재분류하면, 수익 기여도가 높은 군집을 별도로 관리할 수 있습니다.'
+              ]).map((msg, idx) => (
+                <li key={idx}>{msg}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )
+    }
+  ];
 
-    fetch('http://localhost:8000/analytics/summary', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file_id: selectedFile })
-    })
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to fetch summary');
-        return res.json();
-      })
-      .then(data => {
-        setSummary(data);
-        // Default to first column for chart
-        if (data.columns.length > 0) {
-          setSelectedColumn(data.columns[0].name);
-        }
-      })
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [selectedFile]);
+  const renderCollapsibleSection = (section: CollapsibleSection) => {
+    const isExpanded = expandedSections.has(section.id);
+    const Icon = section.icon;
 
-  // Fetch chart data when column changes
-  useEffect(() => {
-    if (!selectedFile || !selectedColumn || activeTab !== 'distribution') return;
+    return (
+      <div
+        key={section.id}
+        className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 mb-8 last:mb-0"
+      >
+        <button
+          onClick={() => toggleSection(section.id)}
+          className="w-full flex items-center justify-between px-9 py-8 hover:bg-gray-50 transition-colors"
+        >
+          <div className="flex items-center gap-7">
+            <div
+              className={`w-12 h-12 rounded-xl flex items-center justify-center bg-white ${
+                isExpanded ? 'text-blue-600' : 'text-gray-500'
+              }`}
+            >
+              <Icon className="w-5 h-5" />
+            </div>
+            <span className="font-bold text-lg text-gray-800">{section.title}</span>
+          </div>
+          {isExpanded ? (
+            <ChevronUp className="w-5 h-5 text-gray-400" />
+          ) : (
+            <ChevronDown className="w-5 h-5 text-gray-400" />
+          )}
+        </button>
+        {isExpanded && (
+          <div className="border-t border-gray-100 animate-in slide-in-from-top-2 duration-200">
+            {/* Inner padding for expanded content */}
+            <div className="px-9 pb-9 pt-5 mt-2 space-y-6">
+              {section.content}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
-    fetch('http://localhost:8000/analytics/distribution', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file_id: selectedFile, column: selectedColumn })
-    })
-      .then(res => res.json())
-      .then(data => {
-        if (data.error) {
-          console.error(data.error);
-        } else {
-          setChartData(data);
-        }
-      })
-      .catch(err => console.error("Failed to fetch chart data:", err));
-  }, [selectedFile, selectedColumn, activeTab]);
+  const tabs = [
+    { id: 'overview' as TabType, label: '개요', icon: FileText },
+    { id: 'charts' as TabType, label: '차트', icon: BarChart3 },
+    { id: 'analysis' as TabType, label: '가공', icon: Lightbulb }
+  ];
 
-  // Fetch correlation data when tab changes
-  useEffect(() => {
-    if (!selectedFile || activeTab !== 'correlation') return;
-    if (correlationData) return; // Already fetched
-
-    fetch('http://localhost:8000/analytics/correlation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file_id: selectedFile })
-    })
-      .then(res => res.json())
-      .then(data => setCorrelationData(data))
-      .catch(err => console.error("Failed to fetch correlation:", err));
-  }, [selectedFile, activeTab]);
-
-  // Helper for heatmap color
-  const getCorrelationColor = (value: number) => {
-    if (value === 1) return 'bg-indigo-600 text-white';
-    if (value > 0.7) return 'bg-indigo-500 text-white';
-    if (value > 0.4) return 'bg-indigo-300 text-white';
-    if (value > 0) return 'bg-indigo-100 text-indigo-900';
-    if (value === 0) return 'bg-gray-50 text-gray-400';
-    if (value > -0.4) return 'bg-red-100 text-red-900';
-    if (value > -0.7) return 'bg-red-300 text-white';
-    return 'bg-red-500 text-white';
+  const getCurrentSections = () => {
+    switch (activeTab) {
+      case 'overview':
+        return overviewSections;
+      case 'charts':
+        return chartsSections;
+      case 'analysis':
+        return analysisSections;
+      default:
+        return [];
+    }
   };
 
   return (
-    <div className="h-full overflow-auto p-8 bg-gray-50">
-      <div className="max-w-7xl mx-auto space-y-8">
-
-        {/* Header & File Selection */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Insight Advisor</h1>
-            <p className="text-gray-500 mt-1">Explore your data with automated statistics and visualizations.</p>
-          </div>
-          <div className="flex items-center space-x-4">
-            <span className="text-sm font-medium text-gray-700">Analyzing:</span>
-            <select
-              value={selectedFile}
-              onChange={(e) => setSelectedFile(e.target.value)}
-              className="block w-64 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2 border"
-            >
-              {files.map(f => (
-                <option key={f.filename} value={f.filename}>{f.filename}</option>
-              ))}
-              {files.length === 0 && <option disabled>No files available</option>}
-            </select>
+    <div className="h-full overflow-auto bg-gray-50/50 p-8">
+      <div className="max-w-6xl mx-auto">
+        {/* Header (no gradient) */}
+        <div className="mb-8">
+          <div className="flex items-center gap-4 mb-2">
+            <div className="w-14 h-14 bg-white border border-gray-200 rounded-2xl flex items-center justify-center shadow-sm">
+              <BarChart3 className="w-7 h-7 text-gray-900" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Analytics Report</h1>
+              <p className="text-gray-600 mt-1">AI가 분석한 데이터 구조, 패턴, 가공 아이디어를 한눈에 확인하세요.</p>
+            </div>
           </div>
         </div>
 
-        {loading && (
-          <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-          </div>
-        )}
-
-        {error && (
-          <div className="bg-red-50 border-l-4 border-red-400 p-4">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <AlertCircle className="h-5 w-5 text-red-400" />
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-red-700">{error}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {summary && !loading && (
-          <>
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Total Rows</p>
-                    <p className="text-2xl font-bold text-gray-900">{summary.total_rows.toLocaleString()}</p>
-                  </div>
-                  <div className="p-3 bg-blue-50 rounded-lg">
-                    <FileText className="h-6 w-6 text-blue-600" />
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Total Columns</p>
-                    <p className="text-2xl font-bold text-gray-900">{summary.total_columns}</p>
-                  </div>
-                  <div className="p-3 bg-green-50 rounded-lg">
-                    <BarChart2 className="h-6 w-6 text-green-600" />
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Completeness</p>
-                    <p className="text-2xl font-bold text-gray-900">{summary.completeness}%</p>
-                  </div>
-                  <div className="p-3 bg-purple-50 rounded-lg">
-                    <Activity className="h-6 w-6 text-purple-600" />
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Missing Values</p>
-                    <p className="text-2xl font-bold text-gray-900">{summary.missing_values.toLocaleString()}</p>
-                  </div>
-                  <div className="p-3 bg-orange-50 rounded-lg">
-                    <AlertCircle className="h-6 w-6 text-orange-600" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Tabs */}
-            <div className="border-b border-gray-200">
-              <nav className="-mb-px flex space-x-8">
+        {/* Tab Navigation - Simplified (horizontal, full-width) with custom separators */}
+        <div className="mb-8 flex flex-row items-stretch w-full border-b border-gray-200">
+          {tabs.map((tab, index) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <React.Fragment key={tab.id}>
                 <button
-                  onClick={() => setActiveTab('distribution')}
-                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeTab === 'distribution'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`
+                    flex-1 flex flex-col items-center justify-center gap-2 px-4 py-4 text-base md:text-lg transition-all duration-150
+                    border-b-2
+                    ${isActive
+                      ? 'border-blue-600 text-blue-700 font-semibold'
+                      : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300'
+                    }
+                  `}
                 >
-                  <BarChart2 className="w-4 h-4" />
-                  Distribution Analysis
+                  <Icon className="w-5 h-5" />
+                  <span className="leading-none">{tab.label}</span>
                 </button>
-                <button
-                  onClick={() => setActiveTab('correlation')}
-                  className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2 ${activeTab === 'correlation'
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                >
-                  <Grid className="w-4 h-4" />
-                  Correlation Matrix
-                </button>
-              </nav>
-            </div>
-
-            {/* Tab Content */}
-            {activeTab === 'distribution' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Left Column: Column List */}
-                <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                  <div className="p-4 border-b border-gray-100 bg-gray-50">
-                    <h3 className="font-semibold text-gray-900">Data Columns</h3>
-                  </div>
-                  <div className="overflow-y-auto max-h-[600px]">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {summary.columns.map((col) => (
-                          <tr
-                            key={col.name}
-                            onClick={() => setSelectedColumn(col.name)}
-                            className={`cursor-pointer hover:bg-indigo-50 transition-colors ${selectedColumn === col.name ? 'bg-indigo-50' : ''}`}
-                          >
-                            <td className="px-4 py-3 text-sm font-medium text-gray-900 truncate max-w-[150px]">{col.name}</td>
-                            <td className="px-4 py-3 text-sm text-gray-500">{col.type}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Right Column: Visualization */}
-                <div className="lg:col-span-2 space-y-6">
-                  {/* Chart Card */}
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 min-h-[400px]">
-                    <div className="mb-6">
-                      <h3 className="text-lg font-semibold text-gray-900">Distribution: {selectedColumn}</h3>
-                      <p className="text-sm text-gray-500">
-                        {chartData?.type === 'numeric' ? 'Histogram of values' : 'Top 10 most frequent values'}
-                      </p>
-                    </div>
-
-                    <div className="h-[300px] w-full">
-                      {chartData && chartData.data.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={chartData.data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                            <XAxis dataKey="name" />
-                            <YAxis />
-                            <Tooltip
-                              contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                            />
-                            <Bar dataKey="value" fill="#6366f1" radius={[4, 4, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div className="h-full flex items-center justify-center text-gray-400">
-                          No data available for this column
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Additional Insights */}
-                  <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-xl shadow-lg p-6 text-white">
-                    <div className="flex items-start space-x-4">
-                      <div className="p-3 bg-white/20 rounded-lg backdrop-blur-sm">
-                        <Sparkles className="h-6 w-6 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold mb-2">AI Insights</h3>
-                        <p className="text-indigo-100 text-sm mb-4">
-                          Based on the analysis of <strong>{selectedColumn}</strong>, here are some automated observations:
-                        </p>
-                        <ul className="space-y-2 text-sm">
-                          <li className="flex items-center">
-                            <span className="w-1.5 h-1.5 bg-white rounded-full mr-2"></span>
-                            Data distribution appears {chartData?.type === 'numeric' ? 'normal' : 'skewed'}.
-                          </li>
-                          <li className="flex items-center">
-                            <span className="w-1.5 h-1.5 bg-white rounded-full mr-2"></span>
-                            {summary.missing_values > 0 ? `${summary.missing_values} missing values detected across the dataset.` : 'Data quality is high with no missing values.'}
-                          </li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'correlation' && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
-                <h3 className="text-lg font-semibold text-gray-900 mb-6">Correlation Matrix (Numeric Columns)</h3>
-
-                {correlationData && correlationData.columns.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <div className="inline-block min-w-full">
-                      <div className="grid" style={{
-                        gridTemplateColumns: `auto repeat(${correlationData.columns.length}, minmax(80px, 1fr))`
-                      }}>
-                        {/* Header Row */}
-                        <div className="p-2"></div>
-                        {correlationData.columns.map((col: string) => (
-                          <div key={col} className="p-2 font-medium text-xs text-gray-500 text-center rotate-45 origin-bottom-left translate-y-4 h-24 flex items-end justify-center">
-                            {col}
-                          </div>
-                        ))}
-
-                        {/* Data Rows */}
-                        {correlationData.columns.map((rowCol: string, i: number) => (
-                          <React.Fragment key={rowCol}>
-                            <div className="p-2 font-medium text-sm text-gray-700 flex items-center justify-end pr-4">
-                              {rowCol}
-                            </div>
-                            {correlationData.columns.map((colCol: string, j: number) => {
-                              const cell = correlationData.data.find((d: any) => d.x === colCol && d.y === rowCol);
-                              const val = cell ? cell.value : 0;
-                              return (
-                                <div
-                                  key={`${rowCol}-${colCol}`}
-                                  className={`p-2 m-0.5 rounded flex items-center justify-center text-sm font-medium ${getCorrelationColor(val)}`}
-                                  title={`${rowCol} vs ${colCol}: ${val}`}
-                                >
-                                  {val}
-                                </div>
-                              );
-                            })}
-                          </React.Fragment>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    Not enough numeric columns to calculate correlations.
-                  </div>
+                {index < tabs.length - 1 && (
+                  <div className="w-[2px] h-10 bg-gray-900 rounded-full mx-4" />
                 )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+
+        {/* Tab Content */}
+        <div className="min-h-[400px]">
+          {getCurrentSections().length > 0 ? (
+            getCurrentSections().map((section) => renderCollapsibleSection(section))
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 bg-white rounded-3xl border border-gray-200 shadow-sm">
+              <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6">
+                <BarChart3 className="w-10 h-10 text-gray-300" />
               </div>
-            )}
-
-          </>
-        )}
-
-        {!selectedFile && !loading && (
-          <div className="text-center py-20">
-            <div className="bg-gray-100 rounded-full h-20 w-20 flex items-center justify-center mx-auto mb-4">
-              <BarChart2 className="h-10 w-10 text-gray-400" />
+              <h3 className="text-xl font-bold text-gray-900 mb-2">표시할 데이터가 없습니다</h3>
+              <p className="text-gray-500 max-w-md text-center">
+                데이터 소스 탭에서 파일을 선택하고 분석을 실행하면<br/>이곳에 상세한 분석 결과가 표시됩니다.
+              </p>
             </div>
-            <h3 className="text-lg font-medium text-gray-900">No Data Selected</h3>
-            <p className="text-gray-500 mt-2">Please upload and select a file to view insights.</p>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

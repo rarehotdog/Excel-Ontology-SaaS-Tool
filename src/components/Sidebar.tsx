@@ -9,9 +9,9 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const menuItems = [
     { id: 'dashboard' as const, icon: LayoutDashboard, label: 'Dashboard', color: 'blue' },
     { id: 'sources' as const, icon: Upload, label: 'Data Sources', color: 'emerald' },
+    { id: 'analytics' as const, icon: BarChart3, label: 'Analytics', color: 'orange' },
     { id: 'smart' as const, icon: Sparkles, label: 'Smart Transform', color: 'violet' },
     { id: 'reconciliation' as const, icon: Network, label: 'Settlement', color: 'red' },
-    { id: 'analytics' as const, icon: BarChart3, label: 'Analytics', color: 'orange' },
     { id: 'exports' as const, icon: Download, label: 'Exports', color: 'teal' },
   ];
 

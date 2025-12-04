@@ -10,22 +10,24 @@ router = APIRouter(prefix="/data", tags=["data"])
 async def upload_files(files: List[UploadFile] = File(...)):
     results = []
     for file in files:
-        # Save temp file
         temp_path = f"temp_{file.filename}"
-        with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            
-        # Load into processor
-        with open(temp_path, "rb") as f:
-            meta = processor.load_file(f, file.filename)
+        try:
+            with open(temp_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+
+            with open(temp_path, "rb") as f:
+                meta = processor.load_file(f, file.filename)
+
             results.append(meta)
-            
+
             # Track Lineage
             lineage_tracker.add_node(file.filename, "source", file.filename, {"size": file.size})
-            
-        # Cleanup temp
-        os.remove(temp_path)
-        
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
     return {"uploaded": results}
 
 @router.get("/list")

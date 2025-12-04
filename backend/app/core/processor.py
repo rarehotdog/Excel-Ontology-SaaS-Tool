@@ -1,6 +1,10 @@
 import pandas as pd
-import io
+import numpy as np
 import traceback
+from pathlib import Path
+from io import BytesIO
+
+from openpyxl import load_workbook
 
 class DataProcessor:
     def __init__(self):
@@ -11,10 +15,12 @@ class DataProcessor:
         Load a file into a pandas DataFrame and store it.
         """
         try:
-            if filename.endswith('.csv'):
+            suffix = Path(filename).suffix.lower()
+            if suffix == '.csv':
+                file_obj.seek(0)
                 df = pd.read_csv(file_obj)
-            elif filename.endswith(('.xls', '.xlsx')):
-                df = pd.read_excel(file_obj)
+            elif suffix in ('.xls', '.xlsx', '.xlsm', '.xltx', '.xltm'):
+                df = self._read_excel_with_fallback(file_obj, suffix)
             else:
                 raise ValueError("Unsupported file format")
 
@@ -24,16 +30,108 @@ class DataProcessor:
             print(f"Error loading file {filename}: {e}")
             raise e
 
+    def _read_excel_with_fallback(self, file_obj, suffix):
+        """
+        Try reading an Excel file with multiple engines to work around pandas engine
+        detection issues that were reported for some customer files.
+
+        If all standard engines fail (often due to highly formatted / merged-cell
+        spreadsheets), fall back to a more tolerant openpyxl-based loader that
+        tries to extract the main rectangular table from the sheet.
+        """
+        file_obj.seek(0)
+        if suffix == '.xls':
+            engines = ['xlrd', 'openpyxl']
+        else:
+            engines = ['openpyxl', 'xlrd']
+
+        last_exception = None
+        for engine in engines:
+            try:
+                file_obj.seek(0)
+                return pd.read_excel(file_obj, engine=engine)
+            except Exception as exc:
+                last_exception = exc
+                continue
+
+        # Last resort: tolerant loader that can handle merged cells / complex layouts
+        try:
+            file_obj.seek(0)
+            return self._read_excel_tolerant(file_obj)
+        except Exception as exc:
+            file_obj.seek(0)
+            raise ValueError(
+                f"Excel file format ({suffix}) could not be reliably parsed. "
+                f"Tried pandas engines {engines} (last error: {last_exception}) "
+                f"and tolerant parser (last error: {exc})."
+            ) from exc
+
+    def _read_excel_tolerant(self, file_obj):
+        """
+        Very tolerant Excel parser using openpyxl directly.
+
+        - Ignores most formatting/merged-cell issues
+        - Trims completely empty rows/columns
+        - Uses the first non-empty row as header if possible
+        - Falls back to generic column names when headers are messy
+        """
+        data = file_obj.read()
+        wb = load_workbook(BytesIO(data), data_only=True)
+        ws = wb.active
+
+        # Collect all rows as plain values
+        raw_rows = [[cell for cell in row] for row in ws.iter_rows(values_only=True)]
+
+        # Drop completely empty rows from top and bottom
+        def is_empty(row):
+            return all((cell is None or str(cell).strip() == "") for cell in row)
+
+        while raw_rows and is_empty(raw_rows[0]):
+            raw_rows.pop(0)
+        while raw_rows and is_empty(raw_rows[-1]):
+            raw_rows.pop()
+
+        if not raw_rows:
+            # No usable data – return empty DataFrame
+            return pd.DataFrame()
+
+        # Normalize row lengths
+        max_len = max(len(r) for r in raw_rows)
+        normalized_rows = [list(r) + [None] * (max_len - len(r)) for r in raw_rows]
+
+        # Heuristic: first non-empty row is header
+        header_row = normalized_rows[0]
+        data_rows = normalized_rows[1:] if len(normalized_rows) > 1 else []
+
+        # Build column names
+        columns = []
+        for idx, val in enumerate(header_row):
+            if val is None or str(val).strip() == "":
+                columns.append(f"col_{idx+1}")
+            else:
+                columns.append(str(val))
+
+        df = pd.DataFrame(data_rows, columns=columns)
+
+        # Drop columns that are completely empty
+        df = df.dropna(axis=1, how="all")
+
+        return df
+
     def _extract_metadata(self, df, filename):
         """
         Extract metadata from a DataFrame.
         """
+        # Replace NaN/NaT with None so that JSON serialization doesn't fail
+        # (json.dumps does not support NaN by default).
+        safe_preview = df.head(3).replace({np.nan: None, pd.NaT: None})
+
         return {
             "filename": filename,
             "columns": list(df.columns),
             "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
             "shape": df.shape,
-            "head": df.head(3).to_dict(orient='records')
+            "head": safe_preview.to_dict(orient='records')
         }
 
     def execute_code(self, code, metadata=None):

@@ -1,7 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import { Upload, Database, FileSpreadsheet, Plus, Search, Sparkles } from 'lucide-react';
+import { Upload, Database, FileSpreadsheet, Plus, Search, Sparkles, BarChart3, Check } from 'lucide-react';
 
-export function DataSources() {
+interface DataSourcesProps {
+  onAnalyzeComplete?: (data: any) => void;
+}
+
+export function DataSources({ onAnalyzeComplete }: DataSourcesProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
@@ -54,15 +58,28 @@ export function DataSources() {
       });
 
       if (!response.ok) {
-        throw new Error('Upload failed');
+        const errorBody = await response.text();
+        let message = 'Upload failed';
+        try {
+          const parsed = JSON.parse(errorBody);
+          message =
+            parsed?.detail ||
+            parsed?.message ||
+            (typeof parsed === 'object' ? JSON.stringify(parsed) : parsed) ||
+            message;
+        } catch {
+          message = errorBody || message;
+        }
+        throw new Error(message);
       }
 
       const data = await response.json();
       // Refresh list
       await fetchDataSources();
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Please try again.';
       console.error('Error uploading file:', error);
-      alert('Failed to upload file. Please try again.');
+      alert(`Failed to upload file. ${message}`);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -72,11 +89,14 @@ export function DataSources() {
   };
 
   const toggleFileSelection = (filename: string) => {
-    setSelectedFiles(prev =>
-      prev.includes(filename)
-        ? prev.filter(f => f !== filename)
-        : [...prev, filename]
-    );
+    setSelectedFiles(prev => {
+      // If already selected, deselect it
+      if (prev.includes(filename)) {
+        return [];
+      }
+      // Otherwise, select ONLY this file (replace existing selection)
+      return [filename];
+    });
   };
 
   const handleMerge = async () => {
@@ -114,33 +134,24 @@ export function DataSources() {
 
   const handleAnalyze = async (filename: string) => {
     try {
-      // In a real app, we would let the user configure columns. 
-      // For this demo, we assume standard columns or ask user.
-      // Hardcoding for demo purposes based on drivers_log.csv structure
-      const rules = {
-        overlapping_time: { start_col: "start_time", end_col: "end_time", user_id_col: "user_id" },
-        zero_distance: { distance_col: "distance", amount_col: "amount" }
-      };
-
-      const response = await fetch('http://localhost:8000/etl/anomaly', {
+      // Call the comprehensive analytics endpoint instead of just anomaly detection
+      const response = await fetch('http://localhost:8000/analytics/initial', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename, rules }),
+        body: JSON.stringify({ filenames: [filename] }),
       });
 
       if (!response.ok) throw new Error('Analysis failed');
 
       const data = await response.json();
-      const { total_anomalies, details } = data.results;
-
-      if (total_anomalies > 0) {
-        alert(`Found ${total_anomalies} anomalies!\n\n${details.map((d: any) => `- [${d.type}] ${d.details}`).join('\n')}`);
-      } else {
-        alert('No anomalies found.');
+      
+      // Pass result to parent to switch view
+      if (onAnalyzeComplete) {
+        onAnalyzeComplete(data);
       }
     } catch (error) {
       console.error('Analysis error:', error);
-      alert('Failed to analyze file. Ensure columns match expected format (start_time, end_time, etc.)');
+      alert('Failed to analyze file. Please try again.');
     }
   };
 
@@ -171,30 +182,19 @@ export function DataSources() {
             <div className="flex gap-3">
               {selectedFiles.length > 0 && (
                 <button
-                  onClick={handleMerge}
-                  disabled={isMerging}
-                  className="flex items-center gap-3 px-8 py-4 bg-gradient-to-br from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-2xl shadow-lg shadow-purple-200 hover:shadow-xl hover:scale-105 transition-all duration-300 disabled:opacity-50"
+                  onClick={() => {
+                    if (selectedFiles.length === 1) {
+                      handleAnalyze(selectedFiles[0]);
+                    } else {
+                      alert('Please select only one file to analyze.');
+                    }
+                  }}
+                  className="flex items-center gap-3 px-8 py-4 bg-white hover:bg-gray-50 text-gray-900 rounded-2xl shadow-lg border-2 border-gray-200 hover:border-gray-300 hover:shadow-xl hover:scale-105 transition-all duration-300"
                 >
-                  {isMerging ? (
-                    <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <Sparkles className="w-6 h-6" />
-                  )}
-                  <span>Merge ({selectedFiles.length})</span>
+                  <BarChart3 className="w-6 h-6 text-gray-900" />
+                  <span className="font-semibold">Analyze</span>
                 </button>
               )}
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="flex items-center gap-3 px-8 py-4 bg-gradient-to-br from-emerald-400 to-emerald-600 hover:from-emerald-500 hover:to-emerald-700 text-white rounded-2xl shadow-lg shadow-emerald-200 hover:shadow-xl hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isUploading ? (
-                  <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                ) : (
-                  <Plus className="w-6 h-6" />
-                )}
-                <span>{isUploading ? 'Uploading...' : 'Add Source'}</span>
-              </button>
             </div>
           </div>
         </div>
@@ -202,27 +202,6 @@ export function DataSources() {
 
       <div className="px-8 pb-8">
         <div className="max-w-7xl mx-auto space-y-6">
-          {/* Search */}
-          <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-6 shadow-lg shadow-purple-100/50">
-            <div className="flex items-center gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-gray-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search data sources..."
-                  className="w-full pl-14 pr-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:border-emerald-300 focus:bg-white transition-all"
-                />
-              </div>
-              <select className="px-6 py-4 bg-gray-50 border-2 border-gray-100 rounded-2xl text-gray-700 focus:outline-none focus:border-emerald-300">
-                <option>All Types</option>
-                <option>Excel</option>
-                <option>CSV</option>
-                <option>Database</option>
-              </select>
-            </div>
-          </div>
 
           {/* Sources Grid */}
           <div className="grid grid-cols-1 gap-6">
@@ -234,9 +213,17 @@ export function DataSources() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-6 flex-1">
-                    {/* Checkbox for selection */}
-                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${selectedFiles.includes(source.name) ? 'border-purple-500 bg-purple-500' : 'border-gray-300'}`}>
-                      {selectedFiles.includes(source.name) && <div className="w-3 h-3 bg-white rounded-full" />}
+                    {/* Single-select indicator (checkbox-style) */}
+                    <div
+                      className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors bg-white ${
+                        selectedFiles.includes(source.name)
+                          ? 'border-gray-900'
+                          : 'border-gray-300'
+                      }`}
+                    >
+                      {selectedFiles.includes(source.name) && (
+                        <Check className="w-3 h-3 text-gray-900" strokeWidth={3} />
+                      )}
                     </div>
 
                     <div className={`
@@ -277,23 +264,7 @@ export function DataSources() {
                       </div>
                     </div>
                   </div>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleAnalyze(source.name);
-                      }}
-                      className="px-6 py-3 bg-red-100 hover:bg-red-200 text-red-700 rounded-xl transition-all hover:scale-105"
-                    >
-                      Analyze
-                    </button>
-                    <button className="px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-all hover:scale-105">
-                      View
-                    </button>
-                    <button className="px-6 py-3 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl transition-all hover:scale-105">
-                      Configure
-                    </button>
-                  </div>
+
                 </div>
               </div>
             ))}

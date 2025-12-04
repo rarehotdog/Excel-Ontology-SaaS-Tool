@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from app.services import processor, etl, anomaly_detector, reconciler, lineage_tracker
 
 router = APIRouter(prefix="/etl", tags=["etl"])
@@ -11,7 +11,7 @@ class MergeRequest(BaseModel):
 
 class AnomalyRequest(BaseModel):
     filename: str
-    rules: Dict[str, Any]
+    rules: Optional[Dict[str, Any]] = None
 
 class ReconcileRequest(BaseModel):
     internal_filename: str
@@ -50,7 +50,9 @@ def detect_anomalies(request: AnomalyRequest):
     
     df = processor.data_store[request.filename]
     try:
-        results = anomaly_detector.check_rules(df, request.rules)
+        # If rules are not provided, infer sensible defaults from the data itself.
+        rules = request.rules or anomaly_detector.infer_rules(df)
+        results = anomaly_detector.check_rules(df, rules)
         return {"success": True, "results": results}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
