@@ -1,111 +1,115 @@
-import { Database, Filter, GitMerge, Calculator, Wand2, Download } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import ReactFlow, {
+  Node,
+  Edge,
+  Controls,
+  Background,
+  useNodesState,
+  useEdgesState,
+  MarkerType
+} from 'reactflow';
+import 'reactflow/dist/style.css';
+import { Database, Filter, GitMerge, Calculator, Wand2, Download, FileSpreadsheet } from 'lucide-react';
 
 interface PipelineCanvasProps {
   selectedNode: string | null;
   onSelectNode: (nodeId: string | null) => void;
 }
 
-export function PipelineCanvas({ selectedNode, onSelectNode }: PipelineCanvasProps) {
-  const nodes = [
-    { id: 'source-1', type: 'source', label: 'Sales Data', x: 100, y: 180, icon: Database, gradient: 'from-emerald-400 to-emerald-600', shadow: 'shadow-emerald-200' },
-    { id: 'filter-1', type: 'transform', label: 'Filter Active', x: 320, y: 180, icon: Filter, gradient: 'from-blue-400 to-blue-600', shadow: 'shadow-blue-200' },
-    { id: 'group-1', type: 'transform', label: 'Group By Region', x: 540, y: 180, icon: GitMerge, gradient: 'from-blue-400 to-blue-600', shadow: 'shadow-blue-200' },
-    { id: 'calc-1', type: 'transform', label: 'Calculate Total', x: 760, y: 180, icon: Calculator, gradient: 'from-blue-400 to-blue-600', shadow: 'shadow-blue-200' },
-    { id: 'ai-1', type: 'ai', label: 'Format Report', x: 980, y: 180, icon: Wand2, gradient: 'from-purple-400 to-purple-600', shadow: 'shadow-purple-200' },
-    { id: 'export-1', type: 'output', label: 'Export Excel', x: 1200, y: 180, icon: Download, gradient: 'from-orange-400 to-orange-600', shadow: 'shadow-orange-200' },
-  ];
+const nodeTypes = {
+  // We can define custom node types here if needed, but for now we'll use default with custom styles
+};
 
-  const connections = [
-    { from: 'source-1', to: 'filter-1' },
-    { from: 'filter-1', to: 'group-1' },
-    { from: 'group-1', to: 'calc-1' },
-    { from: 'calc-1', to: 'ai-1' },
-    { from: 'ai-1', to: 'export-1' },
-  ];
+export function PipelineCanvas({ selectedNode, onSelectNode }: PipelineCanvasProps) {
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  const fetchLineage = useCallback(async () => {
+    try {
+      const res = await fetch('http://localhost:8000/lineage');
+      const data = await res.json();
+
+      // Transform backend nodes to ReactFlow nodes
+      const flowNodes: Node[] = data.nodes.map((n: any) => ({
+        id: n.id,
+        type: 'default', // Using default for simplicity, can be 'custom'
+        data: {
+          label: (
+            <div className="flex flex-col items-center">
+              <div className={`p-3 rounded-xl mb-2 shadow-md ${n.data.type === 'source' ? 'bg-emerald-100 text-emerald-600' :
+                  n.data.type === 'transform' ? 'bg-blue-100 text-blue-600' :
+                    n.data.type === 'output' ? 'bg-orange-100 text-orange-600' :
+                      'bg-purple-100 text-purple-600'
+                }`}>
+                {n.data.type === 'source' && <Database className="w-5 h-5" />}
+                {n.data.type === 'transform' && <GitMerge className="w-5 h-5" />}
+                {n.data.type === 'output' && <Download className="w-5 h-5" />}
+                {n.data.type === 'ai' && <Wand2 className="w-5 h-5" />}
+              </div>
+              <div className="font-medium text-sm text-gray-900">{n.data.label}</div>
+              <div className="text-xs text-gray-500 capitalize">{n.data.type}</div>
+            </div>
+          ),
+          originalData: n.data // Keep original data for inspector
+        },
+        position: n.position,
+        style: {
+          background: '#fff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '12px',
+          padding: '10px',
+          minWidth: '150px',
+          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+        }
+      }));
+
+      const flowEdges: Edge[] = data.edges.map((e: any) => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        label: e.label,
+        animated: true,
+        style: { stroke: '#8b5cf6', strokeWidth: 2 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#8b5cf6' },
+      }));
+
+      setNodes(flowNodes);
+      setEdges(flowEdges);
+    } catch (err) {
+      console.error("Failed to fetch lineage:", err);
+    }
+  }, [setNodes, setEdges]);
+
+  useEffect(() => {
+    fetchLineage();
+    // Poll every 5 seconds to update graph
+    const interval = setInterval(fetchLineage, 5000);
+    return () => clearInterval(interval);
+  }, [fetchLineage]);
+
+  const onNodeClick = (_: React.MouseEvent, node: Node) => {
+    onSelectNode(node.id);
+  };
+
+  const onPaneClick = () => {
+    onSelectNode(null);
+  };
 
   return (
-    <div className="w-full h-full relative overflow-auto">
-      {/* Dotted Background */}
-      <div 
-        className="absolute inset-0"
-        style={{
-          backgroundImage: 'radial-gradient(circle, #e5e7eb 1px, transparent 1px)',
-          backgroundSize: '24px 24px'
-        }}
-      />
-
-      {/* Canvas Content */}
-      <div className="relative" style={{ width: '1500px', height: '800px' }}>
-        <svg className="absolute inset-0 pointer-events-none" style={{ width: '1500px', height: '800px' }}>
-          <defs>
-            <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.8" />
-              <stop offset="100%" stopColor="#ec4899" stopOpacity="0.8" />
-            </linearGradient>
-            <filter id="glow">
-              <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-              <feMerge>
-                <feMergeNode in="coloredBlur"/>
-                <feMergeNode in="SourceGraphic"/>
-              </feMerge>
-            </filter>
-          </defs>
-          {connections.map((conn, idx) => {
-            const fromNode = nodes.find(n => n.id === conn.from);
-            const toNode = nodes.find(n => n.id === conn.to);
-            if (!fromNode || !toNode) return null;
-
-            const x1 = fromNode.x + 100;
-            const y1 = fromNode.y + 40;
-            const x2 = toNode.x;
-            const y2 = toNode.y + 40;
-            const midX = (x1 + x2) / 2;
-
-            return (
-              <g key={idx}>
-                <path
-                  d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`}
-                  stroke="url(#lineGradient)"
-                  strokeWidth="3"
-                  fill="none"
-                  filter="url(#glow)"
-                />
-                <circle cx={x2} cy={y2} r="4" fill="#ec4899" className="animate-pulse" />
-              </g>
-            );
-          })}
-        </svg>
-
-        {nodes.map((node) => {
-          const Icon = node.icon;
-          const isSelected = selectedNode === node.id;
-          
-          return (
-            <div
-              key={node.id}
-              onClick={() => onSelectNode(node.id)}
-              className={`
-                absolute cursor-pointer transition-all duration-300
-                ${isSelected ? 'scale-110 z-20' : 'hover:scale-105 z-10'}
-              `}
-              style={{ left: node.x, top: node.y }}
-            >
-              <div className={`
-                w-24 h-20 bg-gradient-to-br ${node.gradient} rounded-2xl shadow-xl ${node.shadow} flex items-center justify-center
-                ${isSelected ? 'ring-4 ring-purple-300 ring-offset-4' : ''}
-                transition-all duration-300
-              `}>
-                <Icon className="w-10 h-10 text-white" />
-              </div>
-              <div className="text-center mt-3">
-                <div className="text-sm text-gray-700 px-3 py-1.5 bg-white/90 backdrop-blur rounded-xl shadow-md inline-block">
-                  {node.label}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+    <div className="w-full h-full">
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodeClick={onNodeClick}
+        onPaneClick={onPaneClick}
+        fitView
+        attributionPosition="bottom-right"
+      >
+        <Background color="#ccc" gap={20} />
+        <Controls />
+      </ReactFlow>
     </div>
   );
 }

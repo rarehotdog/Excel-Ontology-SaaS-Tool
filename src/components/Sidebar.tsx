@@ -12,7 +12,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
     { id: 'smart' as const, icon: Sparkles, label: 'Smart Transform', color: 'violet' }, // Added Smart Transform
     { id: 'reconciliation' as const, icon: Network, label: 'Settlement', color: 'red' },
     { id: 'pipeline' as const, icon: Wand2, label: 'Pipeline', color: 'purple' },
-    { id: 'ontology' as const, icon: Network, label: 'Ontology', color: 'pink' },
+    { id: 'ontology' as const, icon: Network, label: 'Data Dictionary', color: 'pink' },
     { id: 'analytics' as const, icon: BarChart3, label: 'Analytics', color: 'orange' },
     { id: 'exports' as const, icon: Download, label: 'Exports', color: 'teal' },
   ];

@@ -1,4 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
@@ -12,6 +13,9 @@ from app.core.etl_pipeline import ETLPipeline
 from app.core.anomaly import AnomalyDetector
 from app.core.reconciliation import Reconciler
 from app.core.smart_transformer import SmartTransformer
+from app.core.analytics_engine import AnalyticsEngine
+from app.core.lineage import LineageTracker
+from app.core.dictionary import DataDictionary
 
 app = FastAPI(title="Excel Ontology API")
 
@@ -24,6 +28,10 @@ etl = ETLPipeline()
 anomaly_detector = AnomalyDetector()
 reconciler = Reconciler()
 smart_transformer = SmartTransformer()
+smart_transformer = SmartTransformer()
+analytics_engine = AnalyticsEngine()
+lineage_tracker = LineageTracker()
+data_dictionary = DataDictionary()
 
 class MergeRequest(BaseModel):
     filenames: List[str]
@@ -47,8 +55,16 @@ class GenerateCodeRequest(BaseModel):
     source_filename: str
 
 class TransformRequest(BaseModel):
-    source_filename: str
+    file_id: str
     mapping: Dict[str, str]
+    output_name: str
+
+class AnalyticsRequest(BaseModel):
+    file_id: str
+
+class DistributionRequest(BaseModel):
+    file_id: str
+    column: str
     output_name: str
 
 # ... (existing endpoints)
@@ -109,10 +125,10 @@ def generate_code(request: GenerateCodeRequest):
 
 @app.post("/smart/transform")
 def transform_data(request: TransformRequest):
-    if request.source_filename not in processor.data_store:
+    if request.file_id not in processor.data_store:
         raise HTTPException(status_code=404, detail="Source file not found")
     
-    df = processor.data_store[request.source_filename]
+    df = processor.data_store[request.file_id]
     
     try:
         result_df = smart_transformer.execute_transformation(df, request.mapping)
@@ -124,6 +140,19 @@ def transform_data(request: TransformRequest):
         # Convert to JSON for preview
         result_json = result_df.head().to_dict(orient='records')
         
+        # Track Lineage
+        # 1. Source Node (if not exists)
+        lineage_tracker.add_node(request.file_id, "source", request.file_id, {"rows": len(df)})
+        
+        # 2. Transform Node
+        transform_id = f"transform_{request.output_name}"
+        lineage_tracker.add_node(transform_id, "transform", "Smart Transform", {"mapping": request.mapping})
+        lineage_tracker.add_edge(request.file_id, transform_id, "Applied Mapping")
+        
+        # 3. Output Node
+        lineage_tracker.add_node(output_filename, "output", output_filename, {"rows": len(result_df)})
+        lineage_tracker.add_edge(transform_id, output_filename, "Generated")
+
         return {
             "success": True, 
             "metadata": {
@@ -147,9 +176,78 @@ def merge_data(request: MergeRequest):
         
         # Return metadata
         meta = processor._extract_metadata(merged_df, output_name)
+        
+        # Track Lineage
+        merge_node_id = f"merge_{output_name}"
+        lineage_tracker.add_node(merge_node_id, "transform", "Merge Files", {"files": request.filenames})
+        
+        for fname in request.filenames:
+            lineage_tracker.add_node(fname, "source", fname)
+            lineage_tracker.add_edge(fname, merge_node_id, "Merged")
+            
+        lineage_tracker.add_node(output_name, "output", output_name, {"rows": len(merged_df)})
+        lineage_tracker.add_edge(merge_node_id, output_name, "Result")
+        
         return {"success": True, "metadata": meta}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/lineage")
+def get_lineage():
+    return lineage_tracker.get_graph()
+
+@app.get("/dictionary/terms")
+def get_terms():
+    return data_dictionary.get_terms()
+
+@app.post("/dictionary/terms")
+def add_term(term: Dict[str, Any]):
+    # In real app, validate with Pydantic model
+    return data_dictionary.add_term(term)
+
+@app.get("/dictionary/rules")
+def get_rules():
+    return data_dictionary.get_rules()
+
+@app.get("/export/download")
+def download_file(filename: str, format: str = "csv"):
+    if filename not in processor.data_store:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    df = processor.data_store[filename]
+    
+    # Create temp file for download
+    if format.lower() == "excel":
+        output_filename = f"download_{filename.split('.')[0]}.xlsx"
+        df.to_excel(output_filename, index=False)
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    else:
+        output_filename = f"download_{filename.split('.')[0]}.csv"
+        df.to_csv(output_filename, index=False)
+        media_type = "text/csv"
+        
+    return FileResponse(
+        path=output_filename, 
+        filename=output_filename, 
+        media_type=media_type
+    )
+
+
+@app.post("/analytics/summary")
+async def get_analytics_summary(request: AnalyticsRequest):
+    if request.file_id not in processor.data_store:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    df = processor.data_store[request.file_id]
+    return analytics_engine.generate_summary(df)
+
+@app.post("/analytics/distribution")
+async def get_column_distribution(request: DistributionRequest):
+    if request.file_id not in processor.data_store:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    df = processor.data_store[request.file_id]
+    return analytics_engine.get_column_distribution(df, request.column)
 
 
 # CORS
@@ -192,6 +290,9 @@ async def upload_files(files: List[UploadFile] = File(...)):
             # setattr(f, 'name', file.filename) # Removed causing AttributeError
             meta = processor.load_file(f, file.filename)
             results.append(meta)
+            
+            # Track Lineage
+            lineage_tracker.add_node(file.filename, "source", file.filename, {"size": file.size})
             
         # Cleanup temp
         os.remove(temp_path)

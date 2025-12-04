@@ -66,6 +66,16 @@ class Reconciler:
                             "diff": "N/A (String mismatch)"
                         })
 
+        # Calculate Net Financial Impact (Sum of diffs)
+        net_financial_impact = 0.0
+        for m in mismatches:
+            if isinstance(m['diff'], (int, float)):
+                net_financial_impact += m['diff']
+                
+        # Add missing external values (if they are considered positive/negative impact depends on perspective, 
+        # here we just sum the mismatches for now, or we could add missing values if we knew which column to sum)
+        # For simplicity, we just sum the explicit value mismatches.
+
         return {
             "summary": {
                 "total_internal": len(df_internal),
@@ -73,9 +83,10 @@ class Reconciler:
                 "matched_count": len(matched),
                 "missing_in_external_count": len(missing_in_external),
                 "missing_in_internal_count": len(missing_in_internal),
-                "value_mismatch_count": len(mismatches)
+                "value_mismatch_count": len(mismatches),
+                "net_financial_impact": round(net_financial_impact, 2)
             },
-            "missing_in_external": missing_in_external[key_columns].to_dict(orient='records'),
-            "missing_in_internal": missing_in_internal[key_columns].to_dict(orient='records'),
+            "missing_in_external": missing_in_external.to_dict(orient='records'),
+            "missing_in_internal": missing_in_internal.to_dict(orient='records'),
             "mismatches": mismatches
         }
