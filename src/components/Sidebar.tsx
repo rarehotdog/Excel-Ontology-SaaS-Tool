@@ -1,18 +1,20 @@
-import { Upload, Wand2, Lightbulb, Database, LayoutDashboard, Network, BarChart3, Download, Sparkles } from 'lucide-react';
+import { Upload, Wand2, Lightbulb, Database, LayoutDashboard, Network, BarChart3, Download, Sparkles, Calculator } from 'lucide-react';
+
+type ViewType = 'dashboard' | 'sources' | 'pipeline' | 'ontology' | 'analytics' | 'exports' | 'settlement' | 'smart';
 
 interface SidebarProps {
-  activeView: 'dashboard' | 'sources' | 'pipeline' | 'ontology' | 'analytics' | 'exports' | 'reconciliation' | 'smart';
-  onViewChange: (view: 'dashboard' | 'sources' | 'pipeline' | 'ontology' | 'analytics' | 'exports' | 'reconciliation' | 'smart') => void;
+  activeView: ViewType;
+  onViewChange: (view: ViewType) => void;
 }
 
 export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const menuItems = [
     { id: 'dashboard' as const, icon: LayoutDashboard, label: 'Dashboard', color: 'blue' },
     { id: 'sources' as const, icon: Upload, label: 'Data Sources', color: 'emerald' },
-    { id: 'analytics' as const, icon: BarChart3, label: 'Analytics', color: 'orange' },
     { id: 'smart' as const, icon: Sparkles, label: 'Smart Transform', color: 'violet' },
-    { id: 'reconciliation' as const, icon: Network, label: 'Settlement', color: 'red' },
-    { id: 'exports' as const, icon: Download, label: 'Exports', color: 'teal' },
+    { id: 'settlement' as const, icon: Calculator, label: 'Settlement', color: 'teal' },
+    { id: 'analytics' as const, icon: BarChart3, label: 'Analytics', color: 'orange' },
+    { id: 'exports' as const, icon: Download, label: 'Exports', color: 'pink' },
   ];
 
   return (
@@ -53,10 +55,11 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
                 ${isActive
                   ? item.color === 'blue' ? 'bg-gradient-to-br from-blue-400 to-blue-600 shadow-lg shadow-blue-200' :
                     item.color === 'emerald' ? 'bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-200' :
-                      item.color === 'purple' ? 'bg-gradient-to-br from-purple-400 to-purple-600 shadow-lg shadow-purple-200' :
-                        item.color === 'pink' ? 'bg-gradient-to-br from-pink-400 to-pink-600 shadow-lg shadow-pink-200' :
-                          item.color === 'orange' ? 'bg-gradient-to-br from-orange-400 to-orange-600 shadow-lg shadow-orange-200' :
-                            'bg-gradient-to-br from-teal-400 to-teal-600 shadow-lg shadow-teal-200'
+                    item.color === 'violet' ? 'bg-gradient-to-br from-violet-400 to-violet-600 shadow-lg shadow-violet-200' :
+                    item.color === 'teal' ? 'bg-gradient-to-br from-teal-400 to-teal-600 shadow-lg shadow-teal-200' :
+                    item.color === 'orange' ? 'bg-gradient-to-br from-orange-400 to-orange-600 shadow-lg shadow-orange-200' :
+                    item.color === 'pink' ? 'bg-gradient-to-br from-pink-400 to-pink-600 shadow-lg shadow-pink-200' :
+                    'bg-gradient-to-br from-gray-400 to-gray-600 shadow-lg shadow-gray-200'
                   : 'bg-gray-100 group-hover:bg-gray-200'
                 }
               `}>

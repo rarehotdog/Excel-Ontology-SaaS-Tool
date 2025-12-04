@@ -1,14 +1,127 @@
-import { useState } from 'react';
-import { Plus, Play, Save, Sparkles, Wand2, Upload as UploadIcon, Database, Settings, Download } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Plus, Play, Save, Sparkles, Wand2, Upload as UploadIcon, Database, Settings, Download, FileSpreadsheet, X, Loader2, Eye, CheckCircle } from 'lucide-react';
 import { PipelineCanvas } from './PipelineCanvas';
+
+interface PipelineNode {
+    id: string;
+    type: string;
+    label: string;
+    x: number;
+    y: number;
+    data?: { icon: string };
+}
+
+interface PipelineConnection {
+    from: string;
+    to: string;
+}
+
+interface PreviewData {
+    [key: string]: any;
+}
 
 export function SmartTransformView() {
     const [selectedNode, setSelectedNode] = useState<string | null>(null);
     const [naturalLanguageInput, setNaturalLanguageInput] = useState('');
+    const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [pipelineData, setPipelineData] = useState<{ nodes: PipelineNode[], connections: PipelineConnection[] } | null>(null);
+    const [previewData, setPreviewData] = useState<PreviewData[]>([]);
+    const [showPreview, setShowPreview] = useState(false);
+    const [uploadSuccess, setUploadSuccess] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleSmartBuild = () => {
-        // AI가 자연어를 파이프라인으로 변환
-        alert('AI가 파이프라인을 자동 생성합니다: ' + naturalLanguageInput);
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        setUploadSuccess(false);
+
+        try {
+            const formData = new FormData();
+            formData.append('files', file);
+
+            const response = await fetch('http://localhost:8000/data/upload', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (response.ok) {
+                setUploadedFile(file);
+                setUploadSuccess(true);
+                setTimeout(() => setUploadSuccess(false), 3000);
+            } else {
+                alert('파일 업로드 실패');
+            }
+        } catch (error) {
+            console.error('Upload error:', error);
+            alert('서버 연결 오류');
+        } finally {
+            setIsUploading(false);
+        }
+    };
+
+    const handleSmartBuild = async () => {
+        if (!naturalLanguageInput.trim()) return;
+
+        setIsGenerating(true);
+
+        try {
+            const response = await fetch('http://localhost:8000/smart-transform/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: naturalLanguageInput }),
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setPipelineData({
+                    nodes: data.nodes,
+                    connections: data.connections,
+                });
+                setPreviewData(data.previewData || []);
+            } else {
+                alert('파이프라인 생성 실패');
+            }
+        } catch (error) {
+            console.error('Generation error:', error);
+            alert('서버 연결 오류');
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    const handleRunPipeline = () => {
+        if (previewData.length > 0) {
+            setShowPreview(true);
+        } else {
+            alert('먼저 자연어 입력 후 자동 생성을 실행해주세요.');
+        }
+    };
+
+    const handleDownloadExcel = async () => {
+        if (previewData.length === 0) return;
+
+        try {
+            // CSV로 다운로드 (간단한 구현)
+            const headers = Object.keys(previewData[0]);
+            const csvContent = [
+                headers.join(','),
+                ...previewData.map(row => headers.map(h => row[h]).join(','))
+            ].join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'transformed_data.csv';
+            link.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Download error:', error);
+        }
     };
 
     const onDragStart = (event: React.DragEvent, nodeType: string, label: string) => {
@@ -33,11 +146,36 @@ export function SmartTransformView() {
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
+                            {/* 파일 업로드 */}
+                            <input
+                                type="file"
+                                ref={fileInputRef}
+                                onChange={handleFileUpload}
+                                accept=".xlsx,.xls,.csv"
+                                className="hidden"
+                            />
+                            <button
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isUploading}
+                                className="flex items-center gap-2 px-5 py-3 bg-white hover:bg-gray-50 text-gray-700 rounded-2xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300 border-2 border-dashed border-gray-300"
+                            >
+                                {isUploading ? (
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                ) : uploadedFile ? (
+                                    <CheckCircle className="w-5 h-5 text-green-500" />
+                                ) : (
+                                    <UploadIcon className="w-5 h-5" />
+                                )}
+                                <span className="text-sm">{uploadedFile ? uploadedFile.name : '파일 업로드'}</span>
+                            </button>
                             <button className="flex items-center gap-2 px-6 py-3 bg-white hover:bg-gray-50 text-gray-700 rounded-2xl shadow-lg hover:shadow-xl hover:scale-105 transition-all duration-300">
                                 <Save className="w-5 h-5" />
                                 <span>Save</span>
                             </button>
-                            <button className="flex items-center gap-2 px-6 py-3 bg-gradient-to-br from-emerald-400 to-emerald-600 hover:from-emerald-500 hover:to-emerald-700 text-white rounded-2xl shadow-lg shadow-emerald-200 hover:shadow-xl hover:scale-105 transition-all duration-300">
+                            <button
+                                onClick={handleRunPipeline}
+                                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-br from-emerald-400 to-emerald-600 hover:from-emerald-500 hover:to-emerald-700 text-white rounded-2xl shadow-lg shadow-emerald-200 hover:shadow-xl hover:scale-105 transition-all duration-300"
+                            >
                                 <Play className="w-5 h-5" />
                                 <span>Run Pipeline</span>
                             </button>
@@ -66,15 +204,25 @@ export function SmartTransformView() {
                             <div className="flex flex-col gap-2 w-48">
                                 <button
                                     onClick={handleSmartBuild}
-                                    disabled={!naturalLanguageInput.trim()}
+                                    disabled={!naturalLanguageInput.trim() || isGenerating}
                                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-br from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:from-gray-300 disabled:to-gray-400 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all disabled:scale-100 disabled:cursor-not-allowed text-sm font-bold"
                                 >
-                                    <Sparkles className="w-4 h-4" />
-                                    <span>자동 생성</span>
+                                    {isGenerating ? (
+                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                    ) : (
+                                        <Sparkles className="w-4 h-4" />
+                                    )}
+                                    <span>{isGenerating ? '생성 중...' : '자동 생성'}</span>
                                 </button>
-                                <button className="flex-1 px-4 py-2 bg-white hover:bg-gray-50 text-gray-700 rounded-xl shadow-md hover:shadow-lg transition-all text-sm font-medium">
-                                    예시 보기
-                                </button>
+                                {previewData.length > 0 && (
+                                    <button
+                                        onClick={() => setShowPreview(true)}
+                                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-xl shadow-md hover:shadow-lg transition-all text-sm font-medium"
+                                    >
+                                        <Eye className="w-4 h-4" />
+                                        <span>결과 보기</span>
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -199,7 +347,11 @@ export function SmartTransformView() {
 
                 {/* Canvas */}
                 <div className="flex-1 bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl shadow-purple-100/50 overflow-hidden">
-                    <PipelineCanvas selectedNode={selectedNode} onSelectNode={setSelectedNode} />
+                    <PipelineCanvas
+                        selectedNode={selectedNode}
+                        onSelectNode={setSelectedNode}
+                        pipelineData={pipelineData}
+                    />
                 </div>
 
                 {/* Properties Panel */}
@@ -250,6 +402,70 @@ export function SmartTransformView() {
                     </div>
                 </div>
             </div>
+
+            {/* Preview Modal */}
+            {showPreview && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-8">
+                    <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[80vh] flex flex-col">
+                        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-xl flex items-center justify-center">
+                                    <FileSpreadsheet className="w-5 h-5 text-white" />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900">변환 결과 미리보기</h2>
+                                    <p className="text-sm text-gray-600">{previewData.length}개 행</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={handleDownloadExcel}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-br from-emerald-500 to-emerald-600 text-white rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all font-medium"
+                                >
+                                    <Download className="w-4 h-4" />
+                                    <span>다운로드</span>
+                                </button>
+                                <button
+                                    onClick={() => setShowPreview(false)}
+                                    className="w-10 h-10 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-xl transition-all"
+                                >
+                                    <X className="w-5 h-5 text-gray-600" />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-auto p-6">
+                            {previewData.length > 0 ? (
+                                <table className="w-full border-collapse">
+                                    <thead>
+                                        <tr className="bg-gray-50">
+                                            {Object.keys(previewData[0]).map((key) => (
+                                                <th key={key} className="px-4 py-3 text-left text-sm font-bold text-gray-700 border-b border-gray-200">
+                                                    {key}
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {previewData.map((row, idx) => (
+                                            <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                                                {Object.values(row).map((val, i) => (
+                                                    <td key={i} className="px-4 py-3 text-sm text-gray-600 border-b border-gray-100">
+                                                        {String(val)}
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <div className="text-center py-12 text-gray-500">
+                                    데이터가 없습니다.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

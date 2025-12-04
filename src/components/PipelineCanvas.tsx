@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -9,38 +9,120 @@ import ReactFlow, {
   Node,
   ReactFlowProvider,
   useReactFlow,
-  OnNodesChange,
-  OnEdgesChange,
-  OnConnect
+  useNodesState,
+  useEdgesState,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
 let id = 0;
 const getId = () => `dndnode_${id++}`;
 
-interface PipelineCanvasProps {
-  nodes: Node[];
-  edges: Edge[];
-  onNodesChange: OnNodesChange;
-  onEdgesChange: OnEdgesChange;
-  onConnect: OnConnect;
-  onAddNode: (node: Node) => void;
-  selectedNode: string | null;
-  onSelectNode: (nodeId: string | null) => void;
+interface PipelineNode {
+  id: string;
+  type: string;
+  label: string;
+  x: number;
+  y: number;
+  data?: { icon: string };
 }
 
+interface PipelineConnection {
+  from: string;
+  to: string;
+}
+
+interface PipelineCanvasProps {
+  selectedNode: string | null;
+  onSelectNode: (nodeId: string | null) => void;
+  pipelineData?: {
+    nodes: PipelineNode[];
+    connections: PipelineConnection[];
+  } | null;
+}
+
+// Default nodes for empty state
+const defaultNodes: Node[] = [
+  {
+    id: 'start',
+    type: 'input',
+    position: { x: 250, y: 50 },
+    data: { label: '🔵 Data Source' },
+    style: {
+      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+      color: 'white',
+      border: 'none',
+      borderRadius: '12px',
+      padding: '12px 20px',
+      fontWeight: 'bold',
+    }
+  },
+];
+
+const defaultEdges: Edge[] = [];
+
 function PipelineCanvasContent({
-  nodes,
-  edges,
-  onNodesChange,
-  onEdgesChange,
-  onConnect,
-  onAddNode,
   selectedNode,
-  onSelectNode
+  onSelectNode,
+  pipelineData,
 }: PipelineCanvasProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { project } = useReactFlow();
+  
+  const [nodes, setNodes, onNodesChange] = useNodesState(defaultNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(defaultEdges);
+
+  // Convert pipelineData to ReactFlow format
+  useEffect(() => {
+    if (pipelineData && pipelineData.nodes.length > 0) {
+      const convertedNodes: Node[] = pipelineData.nodes.map((node) => {
+        let bgColor = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+        let icon = '⚙️';
+        
+        if (node.type === 'source') {
+          bgColor = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+          icon = '📊';
+        } else if (node.type === 'output') {
+          bgColor = 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)';
+          icon = '📤';
+        } else if (node.type === 'transform') {
+          bgColor = 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)';
+          icon = '🔄';
+        }
+
+        return {
+          id: node.id,
+          type: node.type === 'source' ? 'input' : node.type === 'output' ? 'output' : 'default',
+          position: { x: node.x, y: node.y },
+          data: { label: `${icon} ${node.label}` },
+          style: {
+            background: bgColor,
+            color: 'white',
+            border: 'none',
+            borderRadius: '12px',
+            padding: '12px 20px',
+            fontWeight: 'bold',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          }
+        };
+      });
+
+      const convertedEdges: Edge[] = pipelineData.connections.map((conn, idx) => ({
+        id: `e-${idx}`,
+        source: conn.from,
+        target: conn.to,
+        animated: true,
+        style: { stroke: '#8b5cf6', strokeWidth: 2 },
+      }));
+
+      setNodes(convertedNodes);
+      setEdges(convertedEdges);
+    }
+  }, [pipelineData, setNodes, setEdges]);
+
+  const onConnect = useCallback(
+    (params: Connection) => setEdges((eds) => addEdge({ ...params, animated: true }, eds)),
+    [setEdges]
+  );
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -53,7 +135,6 @@ function PipelineCanvasContent({
 
       const type = event.dataTransfer.getData('application/reactflow');
       const label = event.dataTransfer.getData('application/label');
-      const icon = event.dataTransfer.getData('application/icon'); // Get icon if available
 
       if (typeof type === 'undefined' || !type) {
         return;
@@ -67,16 +148,36 @@ function PipelineCanvasContent({
         y: event.clientY - position.top,
       });
 
+      let bgColor = 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
+      let icon = '⚙️';
+      
+      if (type === 'input') {
+        bgColor = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+        icon = '📊';
+      } else if (type === 'output') {
+        bgColor = 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)';
+        icon = '📤';
+      }
+
       const newNode: Node = {
         id: getId(),
-        type, // 'input', 'output', or default (undefined)
+        type: type === 'input' ? 'input' : type === 'output' ? 'output' : 'default',
         position: p,
-        data: { label: label, icon: icon }, // Pass icon to data
+        data: { label: `${icon} ${label}` },
+        style: {
+          background: bgColor,
+          color: 'white',
+          border: 'none',
+          borderRadius: '12px',
+          padding: '12px 20px',
+          fontWeight: 'bold',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+        }
       };
 
-      onAddNode(newNode);
+      setNodes((nds) => nds.concat(newNode));
     },
-    [project, onAddNode]
+    [project, setNodes]
   );
 
   const onNodeClick = (_: React.MouseEvent, node: Node) => {
@@ -100,11 +201,30 @@ function PipelineCanvasContent({
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
         fitView
+        className="bg-gradient-to-br from-gray-50 to-gray-100"
       >
-        <Background />
-        <Controls />
-        <MiniMap />
+        <Background color="#e5e7eb" gap={20} />
+        <Controls className="bg-white rounded-xl shadow-lg" />
+        <MiniMap 
+          className="bg-white rounded-xl shadow-lg"
+          nodeColor={(node) => {
+            if (node.type === 'input') return '#10b981';
+            if (node.type === 'output') return '#f97316';
+            return '#8b5cf6';
+          }}
+        />
       </ReactFlow>
+      
+      {/* Empty State Overlay */}
+      {nodes.length <= 1 && !pipelineData && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div className="text-center p-8 bg-white/90 backdrop-blur rounded-2xl shadow-lg">
+            <div className="text-4xl mb-4">✨</div>
+            <p className="text-gray-600 mb-2">자연어로 명령을 입력하거나</p>
+            <p className="text-gray-600">왼쪽에서 노드를 드래그해서 추가하세요</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
