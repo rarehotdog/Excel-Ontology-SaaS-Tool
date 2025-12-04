@@ -1,14 +1,24 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
-from app.core.smart_transformer import SmartTransformer
+from typing import Dict, Any
+import pandas as pd
+import numpy as np
 
+from app.services import processor, smart_transformer
+
+# Prefix and tags are applied in app.main when including this router.
 router = APIRouter()
-transformer = SmartTransformer()
 
 class GenerateRequest(BaseModel):
     prompt: str
-    # file_id: str  # Placeholder for future file integration
+
+
+class ExecuteRequest(BaseModel):
+    """
+    Execute a smart transform against an already-uploaded file.
+    """
+    prompt: str
+    filename: str
 
 @router.post("/generate")
 async def generate_pipeline(request: GenerateRequest):
@@ -17,8 +27,8 @@ async def generate_pipeline(request: GenerateRequest):
     """
     # 1. Generate a plan using the SmartTransformer (currently uses mock logic based on keywords)
     # In a real scenario, this would pass the actual file schema.
-    mock_schema = {"fields": ["Date", "Dept", "Amount", "Status", "Region", "Category"]} 
-    plan = transformer.generate_plan_from_prompt(request.prompt, mock_schema)
+    mock_schema = {"fields": ["Date", "Dept", "Amount", "Status", "Region", "Category"]}
+    plan = smart_transformer.generate_plan_from_prompt(request.prompt, mock_schema)
     
     # 2. Convert the plan into frontend-compatible Node and Edge structures
     nodes = []
@@ -112,5 +122,93 @@ async def generate_pipeline(request: GenerateRequest):
     return {
         "nodes": nodes,
         "connections": edges,
-        "previewData": preview_data
+        "previewData": preview_data,
+        "plan": plan,
+    }
+
+
+@router.post("/execute")
+async def execute_transform(request: ExecuteRequest):
+    """
+    Execute a smart transform plan directly on an uploaded file and
+    return a preview of the transformed data.
+
+    This uses the same planning logic as /generate, but actually runs
+    the operations against a DataFrame stored in processor.data_store.
+    """
+    if request.filename not in processor.data_store:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    df = processor.data_store[request.filename]
+
+    # Build a simple schema description from the DataFrame
+    schema = {
+        "fields": list(df.columns),
+        "dtypes": {col: str(dtype) for col, dtype in df.dtypes.items()},
+        "shape": df.shape,
+    }
+
+    # 1) Plan from prompt + schema
+    plan = smart_transformer.generate_plan_from_prompt(request.prompt, schema)
+
+    # 2) Execute plan
+    results = smart_transformer.execute_plan(df, plan)
+
+    # Pick the first non-empty table as the main result, otherwise fall back
+    preview_df: pd.DataFrame | None = None
+    output_name = f"smart_{request.filename}"
+
+    for table_id, table_df in results.items():
+        if table_df is not None and not table_df.empty:
+            preview_df = table_df
+            output_name = f"{table_id}_{request.filename}"
+            break
+
+    if preview_df is None:
+        preview_df = df.copy()
+
+    # Store the transformed result so it can be exported later (raw types 유지)
+    processor.data_store[output_name] = preview_df
+
+    # ---- Build display-friendly preview (dates / KRW formatting) ----
+    preview_df_display = preview_df.head(50).copy()
+
+    # 1) Datetime columns → 'YYYY-MM-DD' 문자열로 변환
+    for col in preview_df_display.columns:
+        series = preview_df_display[col]
+        try:
+            if pd.api.types.is_datetime64_any_dtype(series) or pd.api.types.is_datetime64tz_dtype(series):
+                preview_df_display[col] = pd.to_datetime(series, errors="coerce").dt.strftime("%Y-%m-%d")
+            elif series.dtype == object:
+                parsed = pd.to_datetime(series, errors="coerce")
+                # 절반 이상이 날짜로 파싱되면 날짜 컬럼으로 간주
+                if parsed.notna().sum() >= max(1, len(parsed) // 2):
+                    preview_df_display[col] = parsed.dt.strftime("%Y-%m-%d")
+        except Exception:
+            # 날짜 변환 실패 시 원본 유지
+            continue
+
+    # 2) 원화(금액) 컬럼 → 천단위 콤마가 있는 문자열로 변환
+    currency_tokens = ["amount", "금액", "price", "비용", "amt"]
+    for col in preview_df_display.columns:
+        col_l = str(col).lower()
+        if any(tok in col_l for tok in currency_tokens) and pd.api.types.is_numeric_dtype(preview_df_display[col]):
+            def _fmt_krw(v):
+                if v is None or (isinstance(v, float) and np.isnan(v)):
+                    return None
+                try:
+                    return f"{int(round(float(v))):,}"
+                except Exception:
+                    return v
+            preview_df_display[col] = preview_df_display[col].apply(_fmt_krw)
+
+    # JSON-serializable preview
+    safe_preview = preview_df_display.replace({np.nan: None, pd.NaT: None})
+    preview_data = safe_preview.to_dict(orient="records")
+
+    return {
+        "success": True,
+        "outputFilename": output_name,
+        "previewData": preview_data,
+        "plan": plan,
     }
