@@ -9,8 +9,10 @@ import { ExportsView } from './components/ExportsView';
 import { SettlementView } from './components/SettlementView';
 import { SmartTransformView } from './components/SmartTransformView';
 
+export type ViewType = 'dashboard' | 'sources' | 'pipeline' | 'ontology' | 'analytics' | 'exports' | 'settlement' | 'smart';
+
 export default function App() {
-  const [activeView, setActiveView] = useState<'dashboard' | 'sources' | 'pipeline' | 'ontology' | 'analytics' | 'exports' | 'reconciliation' | 'smart'>('dashboard');
+  const [activeView, setActiveView] = useState<ViewType>('dashboard');
   const [analysisData, setAnalysisData] = useState<any>(null);
 
   const handleAnalysisComplete = (data: any) => {
@@ -18,21 +20,25 @@ export default function App() {
     setActiveView('analytics');
   };
 
+  const handleNavigate = (view: string) => {
+    setActiveView(view as ViewType);
+  };
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
       <Sidebar activeView={activeView} onViewChange={setActiveView} />
 
-      {/* Right content area: scrollable, sidebar stays fixed */}
-      <main className="flex-1 min-h-0 overflow-y-auto">
-        {activeView === 'dashboard' && <Dashboard onNavigate={setActiveView} />}
+      <main className="flex-1 overflow-hidden">
+        {activeView === 'dashboard' && <Dashboard onNavigate={handleNavigate} />}
         {activeView === 'sources' && (
           <DataSources onAnalyzeComplete={handleAnalysisComplete} />
         )}
+        {activeView === 'pipeline' && <SmartTransformView />}
         {activeView === 'smart' && <SmartTransformView />}
-        {activeView === 'reconciliation' && <SettlementView />}
+        {activeView === 'settlement' && <SettlementView />}
         {activeView === 'analytics' && (
-          <AnalyticsView
-            insights={analysisData?.insights}
+          <AnalyticsView 
+            insights={analysisData?.insights} 
             trendData={analysisData?.trend_data}
             kpiMetrics={analysisData?.kpi_metrics}
             chartMetadata={analysisData?.chart_metadata}
