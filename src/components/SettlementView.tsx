@@ -1,14 +1,22 @@
 import { useState, useMemo } from 'react';
-import { Calculator, FileSpreadsheet, Sparkles, Shield, GitCompare, CheckCircle, ArrowRight } from 'lucide-react';
-import { SettlementMode, StepType, STEPS, ComparisonResult, IntegrityResult } from './settlement/types';
+import { Calculator, FileSpreadsheet, Sparkles, Shield, GitCompare, CheckCircle, ArrowRight, X, Loader2, Zap } from 'lucide-react';
+import { SettlementMode, StepType, STEPS, ComparisonResult, IntegrityResult, IntegrityRow, DiffRow, GapSummary } from './settlement/types';
 import { SettlementSidebar } from './settlement/SettlementSidebar';
 import { StepFileSelection } from './settlement/StepFileSelection';
-import { StepKeyMapping } from './settlement/StepKeyMapping';
-import { StepRuleSettings } from './settlement/StepRuleSettings';
+import { StepKeyMapping, KeyMappingConfig } from './settlement/StepKeyMapping';
+import { StepRuleSettings, RuleConfig } from './settlement/StepRuleSettings';
 import { StepExecution } from './settlement/StepExecution';
 import { StepDrillDown } from './settlement/StepDrillDown';
 import { StepReport } from './settlement/StepReport';
 import { ParsedFile } from './settlement/FileUploader';
+
+// 템플릿 정의
+const TEMPLATES = [
+    { id: 'fare-card', name: '운임-카드 정산', description: '운임 Raw와 카드 결제 내역 대사', mode: 'integrity' as const, sources: ['fare', 'card'] },
+    { id: 'billing', name: '빌링 검증', description: '빌링 데이터와 내부 데이터 검증', mode: 'integrity' as const, sources: ['billing', 'fare'] },
+    { id: 'monthly', name: '월간 비교', description: '전월 대비 정산 데이터 비교', mode: 'comparison' as const },
+    { id: 'partner', name: '파트너사 대사', description: '파트너사 정산 내역과 내부 정산 비교', mode: 'comparison' as const },
+];
 
 export function SettlementView() {
     const [mode, setMode] = useState<SettlementMode>('integrity');
@@ -19,6 +27,23 @@ export function SettlementView() {
     const [uploadedFiles, setUploadedFiles] = useState<ParsedFile[]>([]);
     const [fileA, setFileA] = useState<ParsedFile | null>(null);
     const [fileB, setFileB] = useState<ParsedFile | null>(null);
+    
+    // 키 매핑 설정 상태
+    const [keyMappingConfig, setKeyMappingConfig] = useState<KeyMappingConfig | null>(null);
+    
+    // 룰 설정 상태
+    const [ruleConfig, setRuleConfig] = useState<RuleConfig | null>(null);
+    
+    // 실행 결과 상태
+    const [executionResult, setExecutionResult] = useState<{
+        integrityData: IntegrityRow[];
+        diffData: DiffRow[];
+        gapSummary: GapSummary | null;
+    } | null>(null);
+    
+    // UI 상태
+    const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+    const [isAutoInferring, setIsAutoInferring] = useState(false);
 
     // 무결성 검증 모드용 데이터 소스 (Mock + 실제 업로드 파일 통합)
     const integritySources = useMemo(() => {
@@ -113,11 +138,67 @@ export function SettlementView() {
     const handleModeChange = (newMode: SettlementMode) => {
         setMode(newMode);
         setCurrentStep(1);
-        // 모드 변경 시 파일 상태 리셋
+        // 모드 변경 시 전체 상태 리셋
         setUploadedFiles([]);
         setFileA(null);
         setFileB(null);
         setSelectedSources([]);
+        setKeyMappingConfig(null);
+        setRuleConfig(null);
+        setExecutionResult(null);
+    };
+    
+    // 템플릿 선택 핸들러
+    const handleSelectTemplate = (template: typeof TEMPLATES[0]) => {
+        setMode(template.mode);
+        if (template.sources) {
+            setSelectedSources(template.sources);
+        }
+        setIsTemplateModalOpen(false);
+        setCurrentStep(1);
+    };
+    
+    // Auto Inference - 자동으로 Step 4까지 진행
+    const handleAutoInference = async () => {
+        setIsAutoInferring(true);
+        
+        // 시뮬레이션: 각 단계 자동 진행
+        await new Promise(r => setTimeout(r, 500));
+        setCurrentStep(1);
+        
+        // Mock 데이터 소스 자동 선택
+        if (mode === 'integrity') {
+            setSelectedSources(['fare', 'card']);
+        }
+        
+        await new Promise(r => setTimeout(r, 500));
+        setCurrentStep(2);
+        
+        // 키 매핑 자동 설정
+        setKeyMappingConfig({
+            integrityMappings: [
+                { sourceId: 'fare', keyColumns: ['차량번호'], valueColumn: '운임금액' },
+                { sourceId: 'card', keyColumns: ['가맹점ID'], valueColumn: '금액' },
+            ],
+        });
+        
+        await new Promise(r => setTimeout(r, 500));
+        setCurrentStep(3);
+        
+        // 룰 자동 설정
+        setRuleConfig({
+            integrityRules: {
+                criticalAmountDiff: 10000,
+                warningAmountDiff: 1000,
+                detectDuplicates: true,
+                timeThresholdMinutes: 30,
+            },
+        });
+        
+        await new Promise(r => setTimeout(r, 500));
+        setCurrentStep(4);
+        
+        setIsAutoInferring(false);
     };
 
     const handleFilesUploaded = (files: ParsedFile[]) => {
@@ -149,6 +230,61 @@ export function SettlementView() {
 
     return (
         <div className="h-full overflow-auto bg-gray-50">
+            {/* 템플릿 모달 */}
+            {isTemplateModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setIsTemplateModalOpen(false)}>
+                    <div className="bg-white rounded-3xl p-8 max-w-2xl w-full mx-4 shadow-2xl" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+                                <FileSpreadsheet className="w-7 h-7 text-teal-600" />
+                                템플릿 선택
+                            </h3>
+                            <button onClick={() => setIsTemplateModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-xl transition-all">
+                                <X className="w-5 h-5 text-gray-500" />
+                            </button>
+                        </div>
+                        
+                        <p className="text-gray-600 mb-6">자주 사용하는 정산 워크플로우를 템플릿으로 빠르게 시작하세요.</p>
+                        
+                        <div className="grid grid-cols-2 gap-4">
+                            {TEMPLATES.map((template) => (
+                                <button
+                                    key={template.id}
+                                    onClick={() => handleSelectTemplate(template)}
+                                    className="p-5 text-left bg-gray-50 hover:bg-gray-100 rounded-2xl border-2 border-transparent hover:border-teal-300 transition-all"
+                                >
+                                    <div className="flex items-center gap-2 mb-2">
+                                        {template.mode === 'integrity' ? (
+                                            <Shield className="w-5 h-5 text-blue-600" />
+                                        ) : (
+                                            <GitCompare className="w-5 h-5 text-purple-600" />
+                                        )}
+                                        <span className="font-bold text-gray-900">{template.name}</span>
+                                    </div>
+                                    <p className="text-sm text-gray-600">{template.description}</p>
+                                    <div className="mt-3 flex items-center gap-2">
+                                        <span className={`px-2 py-1 text-xs rounded-lg ${
+                                            template.mode === 'integrity' 
+                                                ? 'bg-blue-100 text-blue-700' 
+                                                : 'bg-purple-100 text-purple-700'
+                                        }`}>
+                                            {template.mode === 'integrity' ? '무결성 검증' : '비교 분석'}
+                                        </span>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                        
+                        <div className="mt-6 p-4 bg-teal-50 rounded-xl border border-teal-200">
+                            <div className="flex items-center gap-2 text-teal-800">
+                                <Zap className="w-4 h-4" />
+                                <span className="text-sm font-medium">Tip: Auto Inference를 사용하면 AI가 자동으로 설정을 완료합니다.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
             {/* Header */}
             <div className="p-8 pb-6">
                 <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 shadow-xl shadow-purple-100/50">
@@ -163,13 +299,24 @@ export function SettlementView() {
                             </div>
                         </div>
                         <div className="flex gap-3">
-                            <button className="flex items-center gap-3 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-2xl transition-all hover:scale-105 font-medium">
+                            <button 
+                                onClick={() => setIsTemplateModalOpen(true)}
+                                className="flex items-center gap-3 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-2xl transition-all hover:scale-105 font-medium"
+                            >
                                 <FileSpreadsheet className="w-5 h-5" />
                                 <span>템플릿 불러오기</span>
                             </button>
-                            <button className="flex items-center gap-3 px-8 py-4 bg-gradient-to-br from-teal-400 to-teal-600 hover:from-teal-500 hover:to-teal-700 text-white rounded-2xl shadow-lg shadow-teal-200 hover:shadow-xl hover:scale-105 transition-all duration-300 font-medium">
-                                <Sparkles className="w-6 h-6" />
-                                <span>Auto Inference</span>
+                            <button 
+                                onClick={handleAutoInference}
+                                disabled={isAutoInferring}
+                                className="flex items-center gap-3 px-8 py-4 bg-gradient-to-br from-teal-400 to-teal-600 hover:from-teal-500 hover:to-teal-700 text-white rounded-2xl shadow-lg shadow-teal-200 hover:shadow-xl hover:scale-105 transition-all duration-300 font-medium disabled:opacity-70"
+                            >
+                                {isAutoInferring ? (
+                                    <Loader2 className="w-6 h-6 animate-spin" />
+                                ) : (
+                                    <Sparkles className="w-6 h-6" />
+                                )}
+                                <span>{isAutoInferring ? 'AI 분석 중...' : 'Auto Inference'}</span>
                             </button>
                         </div>
                     </div>
@@ -278,22 +425,54 @@ export function SettlementView() {
                                 onFileBSelected={handleFileBSelected}
                             />
                         )}
-                        {currentStep === 2 && <StepKeyMapping mode={mode} onNext={handleNext} />}
-                        {currentStep === 3 && <StepRuleSettings mode={mode} onNext={handleNext} />}
+                        {currentStep === 2 && (
+                            <StepKeyMapping 
+                                mode={mode} 
+                                onNext={handleNext}
+                                uploadedFiles={uploadedFiles}
+                                fileA={fileA}
+                                fileB={fileB}
+                                config={keyMappingConfig}
+                                onConfigChange={setKeyMappingConfig}
+                            />
+                        )}
+                        {currentStep === 3 && (
+                            <StepRuleSettings 
+                                mode={mode} 
+                                onNext={handleNext}
+                                config={ruleConfig}
+                                onConfigChange={setRuleConfig}
+                            />
+                        )}
                         {currentStep === 4 && (
                             <StepExecution
                                 mode={mode}
                                 integrityResult={integrityResult}
                                 comparisonResult={comparisonResult}
                                 onNext={handleNext}
-                                // 실제 데이터 전달
                                 uploadedFiles={uploadedFiles}
                                 fileA={fileA}
                                 fileB={fileB}
+                                keyMappingConfig={keyMappingConfig}
+                                ruleConfig={ruleConfig}
+                                onResultChange={setExecutionResult}
                             />
                         )}
-                        {currentStep === 5 && <StepDrillDown mode={mode} onNext={handleNext} />}
-                        {currentStep === 6 && <StepReport mode={mode} />}
+                        {currentStep === 5 && (
+                            <StepDrillDown 
+                                mode={mode} 
+                                onNext={handleNext}
+                                executionResult={executionResult}
+                            />
+                        )}
+                        {currentStep === 6 && (
+                            <StepReport 
+                                mode={mode}
+                                executionResult={executionResult}
+                                integrityResult={integrityResult}
+                                comparisonResult={comparisonResult}
+                            />
+                        )}
                     </div>
 
                     {/* Right: AI Suggestions */}
@@ -302,6 +481,7 @@ export function SettlementView() {
                         currentStep={currentStep}
                         integrityResult={integrityResult}
                         comparisonResult={comparisonResult}
+                        executionResult={executionResult}
                     />
                 </div>
             </div>

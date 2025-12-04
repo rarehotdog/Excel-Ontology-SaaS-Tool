@@ -1,10 +1,77 @@
-import { Database, Workflow, BarChart3, Upload, Calculator, FileText } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { Database, Workflow, BarChart3, Upload, Calculator, FileText, CheckCircle, Loader2 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 interface DashboardProps {
-  onNavigate: (view: 'dashboard' | 'sources' | 'pipeline' | 'analytics' | 'exports' | 'settlement') => void;
+  onNavigate: (view: 'dashboard' | 'sources' | 'pipeline' | 'analytics' | 'exports' | 'settlement' | 'smart') => void;
 }
 
 export function Dashboard({ onNavigate }: DashboardProps) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; rows: number; cols: number } | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFile(files[0]);
+    }
+  }, []);
+
+  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFile(e.target.files[0]);
+    }
+  }, []);
+
+  const handleFile = async (file: File) => {
+    setIsProcessing(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = e.target?.result;
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheet];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[];
+        const cols = jsonData.length > 0 ? Object.keys(jsonData[0]).length : 0;
+        
+        setUploadedFile({
+          name: file.name,
+          rows: jsonData.length,
+          cols,
+        });
+        setIsProcessing(false);
+      };
+      reader.readAsArrayBuffer(file);
+    } catch (error) {
+      console.error('파일 처리 오류:', error);
+      setIsProcessing(false);
+    }
+  };
+
+  const getRecentItemNavigation = (type: string): 'smart' | 'settlement' | 'analytics' | 'sources' => {
+    switch (type) {
+      case 'Transform': return 'smart';
+      case 'Settlement': return 'settlement';
+      case 'Analytics': return 'analytics';
+      case 'Data': return 'sources';
+      default: return 'analytics';
+    }
+  };
+
   return (
     <div className="h-full overflow-auto bg-white">
       {/* Main Content */}
@@ -28,40 +95,102 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           
           {/* Upload Area */}
           <div className="max-w-md mx-auto mb-6" style={{ maxWidth: '768px' }}>
-            <div className="group relative bg-gradient-to-br from-gray-50 to-gray-100 hover:from-blue-50 hover:to-purple-50 border-2 border-gray-200 rounded-2xl p-8 transition-all cursor-pointer" style={{ borderStyle: 'dashed' }}>
+            <div 
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`group relative border-2 rounded-2xl p-8 transition-all cursor-pointer ${
+                isDragging 
+                  ? 'bg-blue-50 border-blue-400' 
+                  : uploadedFile 
+                    ? 'bg-green-50 border-green-300'
+                    : 'bg-gradient-to-br from-gray-50 to-gray-100 hover:from-blue-50 hover:to-purple-50 border-gray-200'
+              }`} 
+              style={{ borderStyle: 'dashed' }}
+            >
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleFileInput}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+              
               <div className="flex flex-col items-center">
-                <h3 className="text-lg text-gray-900 mb-2">파일을 드래그하거나 클릭하여 업로드</h3>
-                <p className="text-sm text-gray-500 mb-4">Excel, CSV 파일을 지원합니다 (최대 50MB)</p>
-                
-                <div className="flex items-center gap-3 mb-4">
-                  <button 
-                    onClick={() => onNavigate('sources')} 
-                    className="px-6 py-3 bg-gray-900 text-white rounded-lg transition-all flex items-center gap-2 shadow-lg hover:shadow-xl"
-                    style={{ backgroundColor: '#1f2937' }}
-                  >
-                    <Upload className="w-4 h-4" />
-                    <span className="text-sm">파일 선택</span>
-                  </button>
-                  <button onClick={() => onNavigate('pipeline')} className="px-6 py-3 bg-white hover:bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-lg transition-all text-sm">
-                    템플릿으로 시작
-                  </button>
-                </div>
-                
-                {/* File Format Indicators */}
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 px-3 py-1 bg-white rounded-lg shadow-sm">
-                    <FileText className="w-3 h-3 text-emerald-700" />
-                    <span className="text-xs text-gray-600">.xlsx</span>
-                  </div>
-                  <div className="flex items-center gap-2 px-3 py-1 bg-white rounded-lg shadow-sm">
-                    <FileText className="w-3 h-3 text-blue-600" />
-                    <span className="text-xs text-gray-600">.xls</span>
-                  </div>
-                  <div className="flex items-center gap-2 px-3 py-1 bg-white rounded-lg shadow-sm">
-                    <FileText className="w-3 h-3 text-pink-600" />
-                    <span className="text-xs text-gray-600">.csv</span>
-                  </div>
-                </div>
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="w-12 h-12 text-blue-500 animate-spin mb-4" />
+                    <h3 className="text-lg text-gray-900 mb-2">파일 처리 중...</h3>
+                  </>
+                ) : uploadedFile ? (
+                  <>
+                    <div className="w-16 h-16 bg-green-500 rounded-2xl flex items-center justify-center mb-4">
+                      <CheckCircle className="w-8 h-8 text-white" />
+                    </div>
+                    <h3 className="text-lg text-gray-900 mb-1">파일 업로드 완료!</h3>
+                    <p className="text-sm text-gray-600 mb-2">{uploadedFile.name}</p>
+                    <p className="text-xs text-gray-500 mb-4">
+                      {uploadedFile.rows.toLocaleString()} rows × {uploadedFile.cols} columns
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); onNavigate('smart'); }}
+                        className="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-lg text-sm transition-all"
+                      >
+                        Smart Transform
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); onNavigate('settlement'); }}
+                        className="px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-sm transition-all"
+                      >
+                        Settlement
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setUploadedFile(null); }}
+                        className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm transition-all"
+                      >
+                        다른 파일
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <h3 className="text-lg text-gray-900 mb-2">파일을 드래그하거나 클릭하여 업로드</h3>
+                    <p className="text-sm text-gray-500 mb-4">Excel, CSV 파일을 지원합니다 (최대 50MB)</p>
+                    
+                    <div className="flex items-center gap-3 mb-4">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); onNavigate('sources'); }} 
+                        className="px-6 py-3 bg-gray-900 text-white rounded-lg transition-all flex items-center gap-2 shadow-lg hover:shadow-xl"
+                        style={{ backgroundColor: '#1f2937' }}
+                      >
+                        <Upload className="w-4 h-4" />
+                        <span className="text-sm">파일 선택</span>
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); onNavigate('smart'); }} 
+                        className="px-6 py-3 bg-white hover:bg-gray-50 border-2 border-gray-200 text-gray-900 rounded-lg transition-all text-sm"
+                      >
+                        템플릿으로 시작
+                      </button>
+                    </div>
+                    
+                    {/* File Format Indicators */}
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 px-3 py-1 bg-white rounded-lg shadow-sm">
+                        <FileText className="w-3 h-3 text-emerald-700" />
+                        <span className="text-xs text-gray-600">.xlsx</span>
+                      </div>
+                      <div className="flex items-center gap-2 px-3 py-1 bg-white rounded-lg shadow-sm">
+                        <FileText className="w-3 h-3 text-blue-600" />
+                        <span className="text-xs text-gray-600">.xls</span>
+                      </div>
+                      <div className="flex items-center gap-2 px-3 py-1 bg-white rounded-lg shadow-sm">
+                        <FileText className="w-3 h-3 text-pink-600" />
+                        <span className="text-xs text-gray-600">.csv</span>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -87,7 +216,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           </div>
           
           <div className="grid grid-cols-3 gap-3">
-            <button onClick={() => onNavigate('pipeline')} className="group text-left p-6 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-all">
+            <button onClick={() => onNavigate('smart')} className="group text-left p-6 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl transition-all">
               <div className="w-10 h-10 bg-gradient-to-br from-purple-400 to-pink-400 rounded-lg flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
                 <Workflow className="w-5 h-5 text-white" />
               </div>
@@ -133,7 +262,11 @@ export function Dashboard({ onNavigate }: DashboardProps) {
             ].map((item, idx) => {
               const Icon = item.icon;
               return (
-                <button key={idx} className="group text-left p-3 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg transition-all">
+                <button 
+                  key={idx} 
+                  onClick={() => onNavigate(getRecentItemNavigation(item.type))}
+                  className="group text-left p-3 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg transition-all"
+                >
                   <div className={`w-8 h-8 bg-gradient-to-br ${item.color} rounded-lg flex items-center justify-center mb-2 group-hover:scale-110 transition-transform`}>
                     <Icon className="w-4 h-4 text-white" />
                   </div>
@@ -147,19 +280,31 @@ export function Dashboard({ onNavigate }: DashboardProps) {
 
         {/* Stats Overview */}
         <div className="grid grid-cols-4 gap-2">
-          <div className="p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer">
+          <div 
+            onClick={() => onNavigate('sources')} 
+            className="p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+          >
             <div className="text-xl text-gray-900 mb-1">12</div>
             <div className="text-xs text-gray-500">Data sources</div>
           </div>
-          <div className="p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer">
+          <div 
+            onClick={() => onNavigate('smart')} 
+            className="p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+          >
             <div className="text-xl text-gray-900 mb-1">8</div>
             <div className="text-xs text-gray-500">Active transforms</div>
           </div>
-          <div className="p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer">
+          <div 
+            onClick={() => onNavigate('settlement')} 
+            className="p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+          >
             <div className="text-xl text-gray-900 mb-1">156</div>
             <div className="text-xs text-gray-500">Settlements</div>
           </div>
-          <div className="p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer">
+          <div 
+            onClick={() => onNavigate('analytics')} 
+            className="p-4 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
+          >
             <div className="text-xl text-gray-900 mb-1">24</div>
             <div className="text-xs text-gray-500">Reports</div>
           </div>

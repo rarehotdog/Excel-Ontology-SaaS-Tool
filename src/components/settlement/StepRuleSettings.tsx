@@ -1,13 +1,48 @@
 import { Settings, ArrowRight, Shield, GitCompare, AlertTriangle, CheckCircle } from 'lucide-react';
 import { SettlementMode } from './types';
 
+export interface RuleConfig {
+    // 무결성 모드 룰
+    integrityRules?: {
+        criticalAmountDiff: number;
+        warningAmountDiff: number;
+        detectDuplicates: boolean;
+        timeThresholdMinutes: number;
+    };
+    // 비교 모드 룰
+    comparisonRules?: {
+        toleranceAmount: number;
+        tolerancePercent: number;
+        detectMissing: boolean;
+        detectDiff: boolean;
+        enableAIReasoning: boolean;
+    };
+}
+
 interface StepRuleSettingsProps {
     mode: SettlementMode;
     onNext: () => void;
+    config: RuleConfig | null;
+    onConfigChange: (config: RuleConfig) => void;
 }
 
-export function StepRuleSettings({ mode, onNext }: StepRuleSettingsProps) {
+export function StepRuleSettings({ mode, onNext, config, onConfigChange }: StepRuleSettingsProps) {
+    // 무결성 모드
     if (mode === 'integrity') {
+        const rules = config?.integrityRules || {
+            criticalAmountDiff: 10000,
+            warningAmountDiff: 1000,
+            detectDuplicates: true,
+            timeThresholdMinutes: 30,
+        };
+        
+        const handleUpdate = (updates: Partial<typeof rules>) => {
+            onConfigChange({
+                ...config,
+                integrityRules: { ...rules, ...updates },
+            });
+        };
+
         return (
             <div className="space-y-6">
                 <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 shadow-xl shadow-purple-100/50">
@@ -20,40 +55,75 @@ export function StepRuleSettings({ mode, onNext }: StepRuleSettingsProps) {
                     </p>
 
                     <div className="space-y-4">
+                        {/* Critical */}
                         <div className="p-5 bg-red-50 rounded-2xl border border-red-200">
                             <div className="flex items-center gap-3 mb-3">
                                 <div className="w-4 h-4 rounded-full bg-red-500"></div>
                                 <h3 className="font-bold text-gray-900">Critical (빨강)</h3>
                             </div>
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-3 p-3 bg-white rounded-xl">
-                                    <input type="checkbox" defaultChecked className="w-4 h-4 text-red-500" />
-                                    <span className="text-sm text-gray-700">금액 불일치 {'>'} 10,000원</span>
+                            <div className="space-y-3">
+                                <label className="flex items-center justify-between gap-3 p-3 bg-white rounded-xl">
+                                    <span className="text-sm text-gray-700">금액 불일치 임계값</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm text-gray-500">{'>'}</span>
+                                        <input
+                                            type="number"
+                                            value={rules.criticalAmountDiff}
+                                            onChange={(e) => handleUpdate({ criticalAmountDiff: Number(e.target.value) })}
+                                            className="w-24 px-3 py-1 border border-red-200 rounded-lg text-right"
+                                        />
+                                        <span className="text-sm text-gray-500">원</span>
+                                    </div>
                                 </label>
                                 <label className="flex items-center gap-3 p-3 bg-white rounded-xl">
-                                    <input type="checkbox" defaultChecked className="w-4 h-4 text-red-500" />
+                                    <input 
+                                        type="checkbox" 
+                                        checked={rules.detectDuplicates}
+                                        onChange={(e) => handleUpdate({ detectDuplicates: e.target.checked })}
+                                        className="w-4 h-4 text-red-500" 
+                                    />
                                     <span className="text-sm text-gray-700">중복 거래 ID 탐지</span>
                                 </label>
                             </div>
                         </div>
 
+                        {/* Warning */}
                         <div className="p-5 bg-yellow-50 rounded-2xl border border-yellow-200">
                             <div className="flex items-center gap-3 mb-3">
                                 <div className="w-4 h-4 rounded-full bg-yellow-500"></div>
                                 <h3 className="font-bold text-gray-900">Warning (노랑)</h3>
                             </div>
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-3 p-3 bg-white rounded-xl">
-                                    <input type="checkbox" defaultChecked className="w-4 h-4 text-yellow-500" />
-                                    <span className="text-sm text-gray-700">금액 불일치 1,000 ~ 10,000원</span>
+                            <div className="space-y-3">
+                                <label className="flex items-center justify-between gap-3 p-3 bg-white rounded-xl">
+                                    <span className="text-sm text-gray-700">금액 불일치 범위</span>
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="number"
+                                            value={rules.warningAmountDiff}
+                                            onChange={(e) => handleUpdate({ warningAmountDiff: Number(e.target.value) })}
+                                            className="w-24 px-3 py-1 border border-yellow-200 rounded-lg text-right"
+                                        />
+                                        <span className="text-sm text-gray-500">~</span>
+                                        <span className="text-sm text-gray-700">{rules.criticalAmountDiff.toLocaleString()}원</span>
+                                    </div>
                                 </label>
-                                <label className="flex items-center gap-3 p-3 bg-white rounded-xl">
-                                    <input type="checkbox" defaultChecked className="w-4 h-4 text-yellow-500" />
-                                    <span className="text-sm text-gray-700">시간 차이 {'>'} 30분</span>
+                                <label className="flex items-center justify-between gap-3 p-3 bg-white rounded-xl">
+                                    <span className="text-sm text-gray-700">시간 차이 임계값</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm text-gray-500">{'>'}</span>
+                                        <input
+                                            type="number"
+                                            value={rules.timeThresholdMinutes}
+                                            onChange={(e) => handleUpdate({ timeThresholdMinutes: Number(e.target.value) })}
+                                            className="w-20 px-3 py-1 border border-yellow-200 rounded-lg text-right"
+                                        />
+                                        <span className="text-sm text-gray-500">분</span>
+                                    </div>
                                 </label>
                             </div>
                         </div>
 
+                        {/* Normal */}
                         <div className="p-5 bg-green-50 rounded-2xl border border-green-200">
                             <div className="flex items-center gap-3 mb-3">
                                 <div className="w-4 h-4 rounded-full bg-green-500"></div>
@@ -75,6 +145,22 @@ export function StepRuleSettings({ mode, onNext }: StepRuleSettingsProps) {
         );
     }
 
+    // 비교 분석 모드
+    const rules = config?.comparisonRules || {
+        toleranceAmount: 100,
+        tolerancePercent: 0.1,
+        detectMissing: true,
+        detectDiff: true,
+        enableAIReasoning: true,
+    };
+    
+    const handleUpdate = (updates: Partial<typeof rules>) => {
+        onConfigChange({
+            ...config,
+            comparisonRules: { ...rules, ...updates },
+        });
+    };
+
     return (
         <div className="space-y-6">
             <div className="bg-white/80 backdrop-blur-xl rounded-3xl p-8 shadow-xl shadow-purple-100/50">
@@ -87,6 +173,7 @@ export function StepRuleSettings({ mode, onNext }: StepRuleSettingsProps) {
                 </p>
 
                 <div className="space-y-4">
+                    {/* 허용 오차 */}
                     <div className="p-5 bg-purple-50 rounded-2xl border border-purple-200">
                         <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
                             <AlertTriangle className="w-5 h-5 text-purple-600" />
@@ -95,40 +182,64 @@ export function StepRuleSettings({ mode, onNext }: StepRuleSettingsProps) {
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="text-sm text-gray-600 mb-2 block">금액 허용 오차</label>
-                                <input
-                                    type="number"
-                                    defaultValue={100}
-                                    className="w-full px-4 py-3 bg-white border border-purple-200 rounded-xl"
-                                />
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="number"
+                                        value={rules.toleranceAmount}
+                                        onChange={(e) => handleUpdate({ toleranceAmount: Number(e.target.value) })}
+                                        className="flex-1 px-4 py-3 bg-white border border-purple-200 rounded-xl"
+                                    />
+                                    <span className="text-sm text-gray-500">원</span>
+                                </div>
                             </div>
                             <div>
-                                <label className="text-sm text-gray-600 mb-2 block">비율 허용 오차 (%)</label>
-                                <input
-                                    type="number"
-                                    defaultValue={0.1}
-                                    step={0.01}
-                                    className="w-full px-4 py-3 bg-white border border-purple-200 rounded-xl"
-                                />
+                                <label className="text-sm text-gray-600 mb-2 block">비율 허용 오차</label>
+                                <div className="flex items-center gap-2">
+                                    <input
+                                        type="number"
+                                        value={rules.tolerancePercent}
+                                        onChange={(e) => handleUpdate({ tolerancePercent: Number(e.target.value) })}
+                                        step={0.01}
+                                        className="flex-1 px-4 py-3 bg-white border border-purple-200 rounded-xl"
+                                    />
+                                    <span className="text-sm text-gray-500">%</span>
+                                </div>
                             </div>
                         </div>
                     </div>
 
+                    {/* 분석 옵션 */}
                     <div className="p-5 bg-white rounded-2xl border border-gray-200">
                         <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
                             <CheckCircle className="w-5 h-5 text-purple-600" />
                             분석 옵션
                         </h3>
                         <div className="space-y-3">
-                            <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                                <input type="checkbox" defaultChecked className="w-4 h-4 text-purple-500" />
+                            <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100">
+                                <input 
+                                    type="checkbox" 
+                                    checked={rules.detectMissing}
+                                    onChange={(e) => handleUpdate({ detectMissing: e.target.checked })}
+                                    className="w-4 h-4 text-purple-500" 
+                                />
                                 <span className="text-sm text-gray-700">누락 건 탐지 (A에만 있음 / B에만 있음)</span>
                             </label>
-                            <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                                <input type="checkbox" defaultChecked className="w-4 h-4 text-purple-500" />
+                            <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100">
+                                <input 
+                                    type="checkbox" 
+                                    checked={rules.detectDiff}
+                                    onChange={(e) => handleUpdate({ detectDiff: e.target.checked })}
+                                    className="w-4 h-4 text-purple-500" 
+                                />
                                 <span className="text-sm text-gray-700">금액 차이 분석</span>
                             </label>
-                            <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                                <input type="checkbox" defaultChecked className="w-4 h-4 text-purple-500" />
+                            <label className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100">
+                                <input 
+                                    type="checkbox" 
+                                    checked={rules.enableAIReasoning}
+                                    onChange={(e) => handleUpdate({ enableAIReasoning: e.target.checked })}
+                                    className="w-4 h-4 text-purple-500" 
+                                />
                                 <span className="text-sm text-gray-700">AI 추론 (차이 원인 분석)</span>
                             </label>
                         </div>

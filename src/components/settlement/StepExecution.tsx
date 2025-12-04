@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowRight, Shield, GitCompare, Download, Mail, AlertTriangle, CheckCircle, XCircle, Loader2, X, Copy, FileDown } from 'lucide-react';
 import { SettlementMode, IntegrityResult, ComparisonResult, IntegrityRow, DiffRow, GapSummary, GapViewMode, ProcessingState, IntegrityStatus } from './types';
 import { ParsedFile } from './FileUploader';
+import { KeyMappingConfig } from './StepKeyMapping';
+import { RuleConfig } from './StepRuleSettings';
 
 interface StepExecutionProps {
     mode: SettlementMode;
@@ -12,6 +14,11 @@ interface StepExecutionProps {
     uploadedFiles?: ParsedFile[];
     fileA?: ParsedFile | null;
     fileB?: ParsedFile | null;
+    // 설정
+    keyMappingConfig?: KeyMappingConfig | null;
+    ruleConfig?: RuleConfig | null;
+    // 결과 전달
+    onResultChange?: (result: { integrityData: IntegrityRow[]; diffData: DiffRow[]; gapSummary: GapSummary | null }) => void;
 }
 
 // 실제 데이터에서 IntegrityRow 생성
@@ -519,6 +526,9 @@ export function StepExecution({
     uploadedFiles = [],
     fileA = null,
     fileB = null,
+    keyMappingConfig,
+    ruleConfig,
+    onResultChange,
 }: StepExecutionProps) {
     const [isProcessing, setIsProcessing] = useState(true);
     const [integrityData, setIntegrityData] = useState<IntegrityRow[]>([]);
@@ -595,11 +605,16 @@ export function StepExecution({
             
             if (currentChunk >= totalChunks) {
                 if (mode === 'integrity') {
-                    setIntegrityData(processIntegrityData(uploadedFiles));
+                    const data = processIntegrityData(uploadedFiles);
+                    setIntegrityData(data);
+                    // 결과 전달
+                    onResultChange?.({ integrityData: data, diffData: [], gapSummary: null });
                 } else {
                     const { data, summary } = processComparisonData(fileA, fileB);
                     setDiffData(data);
                     setGapSummary(summary);
+                    // 결과 전달
+                    onResultChange?.({ integrityData: [], diffData: data, gapSummary: summary });
                 }
                 setIsProcessing(false);
             }
@@ -607,7 +622,7 @@ export function StepExecution({
         
         const interval = setInterval(processChunk, 50);
         return () => clearInterval(interval);
-    }, [isProcessing, mode, totalRows, uploadedFiles, fileA, fileB]);
+    }, [isProcessing, mode, totalRows, uploadedFiles, fileA, fileB, onResultChange]);
 
     // 가상 스크롤 설정
     const containerHeight = 400;

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, TrendingUp, BarChart3, Lightbulb, FileText, Activity, AlertCircle } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { ChevronDown, ChevronUp, TrendingUp, BarChart3, Lightbulb, FileText, Activity, AlertCircle, Upload, Loader2, FileSpreadsheet } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
+import * as XLSX from 'xlsx';
 
 interface AnalyticsViewProps {
   insights?: any[];
@@ -18,9 +19,136 @@ interface CollapsibleSection {
   icon: React.ComponentType<any>;
 }
 
-export function AnalyticsView({ insights = [], trendData = [], kpiMetrics = [], chartMetadata = {} }: AnalyticsViewProps) {
+export function AnalyticsView({ insights: propInsights = [], trendData: propTrendData = [], kpiMetrics: propKpiMetrics = [], chartMetadata: propChartMetadata = {} }: AnalyticsViewProps) {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['timeseries', 'distribution', 'correlation', 'dynamic-insights', 'dynamic-kpi']));
+  
+  // 파일 업로드 상태
+  const [uploadedFile, setUploadedFile] = useState<{ name: string; data: any[]; columns: string[] } | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  
+  // 로컬 분석 결과 상태
+  const [localInsights, setLocalInsights] = useState<string[]>([]);
+  const [localTrendData, setLocalTrendData] = useState<any[]>([]);
+  const [localKpiMetrics, setLocalKpiMetrics] = useState<any[]>([]);
+  const [localChartMetadata, setLocalChartMetadata] = useState<any>({});
+  
+  // props 또는 로컬 데이터 사용
+  const insights = localInsights.length > 0 ? localInsights : propInsights;
+  const trendData = localTrendData.length > 0 ? localTrendData : propTrendData;
+  const kpiMetrics = localKpiMetrics.length > 0 ? localKpiMetrics : propKpiMetrics;
+  const chartMetadata = Object.keys(localChartMetadata).length > 0 ? localChartMetadata : propChartMetadata;
+  
+  // 파일 파싱 및 분석
+  const handleFile = useCallback(async (file: File) => {
+    setIsUploading(true);
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = e.target?.result;
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheet];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[];
+        const columns = jsonData.length > 0 ? Object.keys(jsonData[0]) : [];
+        
+        setUploadedFile({ name: file.name, data: jsonData, columns });
+        
+        // 자동 분석 실행
+        generateAnalysis(jsonData, columns, file.name);
+        
+      } catch (error) {
+        console.error('파일 파싱 오류:', error);
+      } finally {
+        setIsUploading(false);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }, []);
+  
+  // 자동 분석 생성
+  const generateAnalysis = (data: any[], columns: string[], fileName: string) => {
+    // 숫자 컬럼 찾기
+    const numericColumns = columns.filter(col => 
+      data.some(row => typeof row[col] === 'number')
+    );
+    
+    // 인사이트 생성
+    const newInsights = [
+      `📊 총 ${data.length.toLocaleString()}개의 데이터가 분석되었습니다.`,
+      `📋 ${columns.length}개의 컬럼이 감지되었습니다: ${columns.slice(0, 3).join(', ')}${columns.length > 3 ? '...' : ''}`,
+      numericColumns.length > 0 
+        ? `🔢 ${numericColumns.length}개의 숫자 컬럼을 발견했습니다: ${numericColumns.slice(0, 3).join(', ')}`
+        : '📝 텍스트 위주의 데이터입니다.',
+      `✅ 데이터 완성도: ${((data.filter(row => Object.values(row).every(v => v !== null && v !== '')).length / data.length) * 100).toFixed(1)}%`,
+    ];
+    setLocalInsights(newInsights);
+    
+    // KPI 생성
+    const newKpiMetrics = [
+      { label: '총 레코드', value: data.length.toLocaleString(), color: 'blue' },
+      { label: '컬럼 수', value: columns.length.toString(), color: 'purple' },
+      { label: '숫자 컬럼', value: numericColumns.length.toString(), color: 'emerald' },
+      { label: '완성도', value: `${((data.filter(row => Object.values(row).every(v => v !== null && v !== '')).length / data.length) * 100).toFixed(0)}%`, color: 'orange' },
+    ];
+    setLocalKpiMetrics(newKpiMetrics);
+    
+    // 시계열 데이터 생성 (숫자 컬럼이 있으면)
+    if (numericColumns.length > 0) {
+      const valueCol = numericColumns[0];
+      const sampleData = data.slice(0, 12).map((row, idx) => ({
+        name: `#${idx + 1}`,
+        value: Number(row[valueCol]) || 0,
+      }));
+      setLocalTrendData(sampleData);
+      
+      // 분포 데이터
+      const distributionData = columns.slice(0, 5).map(col => ({
+        name: col.length > 10 ? col.slice(0, 10) + '...' : col,
+        value: data.filter(row => row[col] !== null && row[col] !== '').length,
+      }));
+      
+      setLocalChartMetadata({
+        time_series: {
+          period_label: '샘플',
+          value_column: valueCol,
+          reason: `${valueCol} 컬럼의 처음 12개 값 추이입니다.`,
+        },
+        distribution: {
+          category_column: '컬럼별',
+          data: distributionData,
+          reason: '각 컬럼별 유효 데이터 수입니다.',
+        },
+      });
+    }
+  };
+  
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+  
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+  
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleFile(files[0]);
+    }
+  }, [handleFile]);
+  
+  const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      handleFile(e.target.files[0]);
+    }
+  }, [handleFile]);
 
   const toggleSection = (sectionId: string) => {
     setExpandedSections(prev => {
@@ -361,21 +489,84 @@ export function AnalyticsView({ insights = [], trendData = [], kpiMetrics = [], 
     }
   };
 
+  // 데이터가 없으면 업로드 화면 표시
+  const hasData = insights.length > 0 || trendData.length > 0 || kpiMetrics.length > 0;
+  
   return (
     <div className="h-full overflow-auto bg-gray-50/50 p-8">
       <div className="max-w-6xl mx-auto">
-        {/* Header (no gradient) */}
+        {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-4 mb-2">
-            <div className="w-14 h-14 bg-white border border-gray-200 rounded-2xl flex items-center justify-center shadow-sm">
-              <BarChart3 className="w-7 h-7 text-gray-900" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-gradient-to-br from-orange-400 to-amber-500 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-200">
+                <BarChart3 className="w-7 h-7 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">Analytics Report</h1>
+                <p className="text-gray-600 mt-1">
+                  {uploadedFile 
+                    ? `분석 중: ${uploadedFile.name} (${uploadedFile.data.length.toLocaleString()} rows)`
+                    : 'AI가 분석한 데이터 구조, 패턴, 가공 아이디어를 확인하세요.'}
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Analytics Report</h1>
-              <p className="text-gray-600 mt-1">AI가 분석한 데이터 구조, 패턴, 가공 아이디어를 한눈에 확인하세요.</p>
-            </div>
+            {uploadedFile && (
+              <button
+                onClick={() => { setUploadedFile(null); setLocalInsights([]); setLocalTrendData([]); setLocalKpiMetrics([]); setLocalChartMetadata({}); }}
+                className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 rounded-lg transition-all"
+              >
+                다른 파일 분석
+              </button>
+            )}
           </div>
         </div>
+        
+        {/* 파일 업로드 영역 (데이터가 없을 때만 표시) */}
+        {!hasData && (
+          <div className="mb-8">
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`relative border-2 rounded-2xl p-12 text-center transition-all ${
+                isDragging 
+                  ? 'border-orange-400 bg-orange-50' 
+                  : 'border-dashed border-gray-300 hover:border-orange-300 hover:bg-orange-50/50'
+              }`}
+            >
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleFileInput}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+              />
+              
+              {isUploading ? (
+                <div className="flex flex-col items-center">
+                  <Loader2 className="w-12 h-12 text-orange-500 animate-spin mb-4" />
+                  <h3 className="text-lg font-bold text-gray-900">분석 중...</h3>
+                </div>
+              ) : (
+                <>
+                  <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+                    <Upload className="w-8 h-8 text-white" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">파일을 업로드하여 분석하세요</h3>
+                  <p className="text-gray-600 mb-4">Excel 또는 CSV 파일을 드래그하거나 클릭하여 선택하세요</p>
+                  <div className="flex items-center justify-center gap-2">
+                    <span className="px-3 py-1 bg-gray-100 rounded text-xs text-gray-600">.xlsx</span>
+                    <span className="px-3 py-1 bg-gray-100 rounded text-xs text-gray-600">.csv</span>
+                  </div>
+                </>
+              )}
+            </div>
+            
+            <p className="text-center text-sm text-gray-500 mt-4">
+              또는 <span className="text-orange-600 font-medium">Data Sources</span> 페이지에서 파일을 선택하여 분석할 수 있습니다.
+            </p>
+          </div>
+        )}
 
         {/* Tab Navigation - Simplified (horizontal, full-width) with custom separators */}
         <div className="mb-8 flex flex-row items-stretch w-full border-b border-gray-200">
