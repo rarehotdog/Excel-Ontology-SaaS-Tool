@@ -564,15 +564,12 @@ export function SmartTransformView() {
         // 일반 Transform 노드 처리
         const prompt = nodeTypeToPrompt[nodeLabel];
         if (prompt) {
-            // 자연어 입력란에 프롬프트 추가
-            const newPrompt = naturalLanguageInput 
-                ? `${naturalLanguageInput}, ${prompt}` 
-                : prompt;
-            setNaturalLanguageInput(newPrompt);
+            // 자연어 입력란에 프롬프트 설정 (덮어쓰기 - 중복 방지)
+            setNaturalLanguageInput(prompt);
             
             // 파일이 업로드된 경우 자동 실행
             if (uploadedFileName) {
-                await executeTransform(newPrompt);
+                await executeTransform(prompt);
             }
         }
     };
