@@ -38,6 +38,7 @@ interface PipelineCanvasProps {
     nodes: PipelineNode[];
     connections: PipelineConnection[];
   } | null;
+  onNodeDrop?: (nodeLabel: string) => void;
 }
 
 // Default nodes for empty state
@@ -64,6 +65,7 @@ function PipelineCanvasContent({
   selectedNode,
   onSelectNode,
   pipelineData,
+  onNodeDrop,
 }: PipelineCanvasProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { project } = useReactFlow();
@@ -176,8 +178,13 @@ function PipelineCanvasContent({
       };
 
       setNodes((nds) => nds.concat(newNode));
+      
+      // 노드 드롭 시 콜백 호출 (데이터 변환 트리거)
+      if (onNodeDrop && label) {
+        onNodeDrop(label);
+      }
     },
-    [project, setNodes]
+    [project, setNodes, onNodeDrop]
   );
 
   const onNodeClick = (_: React.MouseEvent, node: Node) => {

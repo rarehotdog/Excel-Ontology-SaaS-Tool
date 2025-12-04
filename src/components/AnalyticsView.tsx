@@ -43,16 +43,14 @@ export function AnalyticsView({ insights = [], trendData = [], kpiMetrics = [], 
             title: 'AI 분석 인사이트',
             icon: Lightbulb,
             content: (
-              <div className="space-y-4">
+              <ul className="space-y-4 p-4">
                 {insights.map((insight, idx) => (
-                  <div
-                    key={idx}
-                    className="px-5 py-4 bg-blue-50 rounded-lg border-l-4 border-blue-500"
-                  >
-                    <p className="text-sm text-blue-900 leading-relaxed">{insight}</p>
-                  </div>
+                  <li key={idx} className="flex items-start gap-3 text-sm text-gray-800 leading-relaxed">
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#1f2937', marginTop: '7px', flexShrink: 0 }}></span>
+                    <span>{insight}</span>
+                  </li>
                 ))}
-              </div>
+              </ul>
             ),
           },
         ]
@@ -231,7 +229,7 @@ export function AnalyticsView({ insights = [], trendData = [], kpiMetrics = [], 
       title: '가공 제안',
       icon: FileText,
       content: (
-        <div className="space-y-5">
+        <div className="space-y-6 p-2">
           <div className="px-6 py-5 bg-emerald-50 rounded-xl border border-emerald-100">
             <div className="font-semibold text-emerald-900 mb-2">데이터 정제</div>
             <p className="text-sm text-emerald-800 leading-relaxed">
@@ -258,7 +256,7 @@ export function AnalyticsView({ insights = [], trendData = [], kpiMetrics = [], 
       title: '앞으로의 예측',
       icon: Lightbulb,
       content: (
-        <div className="space-y-5">
+        <div className="space-y-5 p-2">
           <div className="px-6 py-5 bg-blue-50 rounded-xl border border-blue-100">
             <div className="font-semibold text-blue-900 mb-2">다음 주기 예측</div>
             <div className="text-sm text-blue-800 leading-relaxed">
@@ -277,7 +275,7 @@ export function AnalyticsView({ insights = [], trendData = [], kpiMetrics = [], 
                 : '예측을 위한 시계열 데이터가 충분하지 않습니다.'}
             </div>
           </div>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-gray-500 px-2">
             * 이 예측은 단순 추세 기반 가정으로, 외부 요인(시즌ality, 프로모션, 정책 변경 등)은 고려하지 않았습니다.
           </p>
         </div>
@@ -288,18 +286,16 @@ export function AnalyticsView({ insights = [], trendData = [], kpiMetrics = [], 
       title: 'AI가 주목한 포인트',
       icon: Activity,
       content: (
-        <div className="space-y-5">
-          <div className="px-6 py-5 bg-gray-50 rounded-xl border border-gray-200">
-            <ul className="list-disc list-inside space-y-3 text-sm text-gray-700 leading-relaxed">
-              {(insights.slice(0, 3).length ? insights.slice(0, 3) : [
-                '데이터의 전체 분포와 극단값을 기준으로, 이상치 후보를 자동으로 태깅할 수 있습니다.',
-                '기간별 추세를 기준으로 피크 구간과 비수기 구간을 분리하면, 리소스 배분 전략 수립에 도움이 됩니다.',
-                '주요 카테고리별 비중을 재분류하면, 수익 기여도가 높은 군집을 별도로 관리할 수 있습니다.'
-              ]).map((msg, idx) => (
-                <li key={idx}>{msg}</li>
-              ))}
-            </ul>
-          </div>
+        <div className="space-y-4 p-2">
+          {(insights.slice(0, 3).length ? insights.slice(0, 3) : [
+            '데이터의 전체 분포와 극단값을 기준으로, 이상치 후보를 자동으로 태깅할 수 있습니다.',
+            '기간별 추세를 기준으로 피크 구간과 비수기 구간을 분리하면, 리소스 배분 전략 수립에 도움이 됩니다.',
+            '주요 카테고리별 비중을 재분류하면, 수익 기여도가 높은 군집을 별도로 관리할 수 있습니다.'
+          ]).map((msg, idx) => (
+            <div key={idx} className="px-6 py-4 bg-gray-50 rounded-xl border border-gray-200">
+              <p className="text-sm text-gray-700 leading-relaxed">{msg}</p>
+            </div>
+          ))}
         </div>
       )
     }

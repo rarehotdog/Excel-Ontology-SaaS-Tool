@@ -11,9 +11,9 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   const menuItems = [
     { id: 'dashboard' as const, icon: LayoutDashboard, label: 'Dashboard', color: 'blue' },
     { id: 'sources' as const, icon: Upload, label: 'Data Sources', color: 'emerald' },
-    { id: 'smart' as const, icon: Sparkles, label: 'Smart Transform', color: 'violet' },
-    { id: 'settlement' as const, icon: Calculator, label: 'Settlement', color: 'teal' },
     { id: 'analytics' as const, icon: BarChart3, label: 'Analytics', color: 'orange' },
+    { id: 'smart' as const, icon: Sparkles, label: 'Smart Transform', color: 'purple' },
+    { id: 'settlement' as const, icon: Calculator, label: 'Settlement', color: 'teal' },
     { id: 'exports' as const, icon: Download, label: 'Exports', color: 'pink' },
   ];
 
@@ -55,6 +55,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
                 ${isActive
                   ? item.color === 'blue' ? 'bg-gradient-to-br from-blue-400 to-blue-600 shadow-lg shadow-blue-200' :
                     item.color === 'emerald' ? 'bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-200' :
+                    item.color === 'purple' ? 'bg-gradient-to-br from-purple-400 to-purple-600 shadow-lg shadow-purple-200' :
                     item.color === 'violet' ? 'bg-gradient-to-br from-violet-400 to-violet-600 shadow-lg shadow-violet-200' :
                     item.color === 'teal' ? 'bg-gradient-to-br from-teal-400 to-teal-600 shadow-lg shadow-teal-200' :
                     item.color === 'orange' ? 'bg-gradient-to-br from-orange-400 to-orange-600 shadow-lg shadow-orange-200' :

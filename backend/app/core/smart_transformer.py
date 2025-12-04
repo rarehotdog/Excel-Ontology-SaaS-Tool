@@ -194,10 +194,42 @@ class SmartTransformer:
                 }
             )
 
-        # === Summary table (grouped) ===
-        if "합계표" in prompt or "summary" in text:
-            group_key = find_column(["category", "region", "status"]) or (fields[0] if fields else None)
-            amount_for_summary = amount_col or find_column(["amount"])
+        # === Summary table (grouped) / 그룹별 집계 ===
+        wants_group = any(
+            kw in text
+            for kw in ["합계표", "summary", "그룹", "group", "집계", "aggregate"]
+        )
+        
+        if wants_group and not plan["tables"]:
+            # 그룹 키 추출: 프롬프트에서 명시된 컬럼 또는 기본 컬럼
+            group_key = None
+            
+            # "카테고리별", "부서별", "지역별" 등 패턴 인식
+            group_patterns = [
+                ("카테고리", ["category", "카테고리"]),
+                ("부서", ["dept", "부서", "department"]),
+                ("지역", ["region", "지역"]),
+                ("상태", ["status", "상태"]),
+                ("날짜", ["date", "날짜"]),
+                ("월", ["month", "월"]),
+            ]
+            
+            for pattern_name, col_candidates in group_patterns:
+                if pattern_name in prompt:
+                    group_key = find_column(col_candidates)
+                    if group_key:
+                        break
+            
+            # 패턴이 없으면 기본 그룹 키 찾기
+            if not group_key:
+                group_key = find_column(["category", "카테고리", "dept", "부서", "region", "지역", "status", "상태"])
+            
+            if not group_key and fields:
+                # 숫자가 아닌 첫 번째 컬럼을 그룹 키로 사용
+                group_key = fields[0]
+            
+            amount_for_summary = amount_col or find_column(["amount", "금액", "price", "가격", "sum", "합계"])
+            
             ops = []
             if group_key and amount_for_summary:
                 ops.append(
@@ -205,16 +237,39 @@ class SmartTransformer:
                         "type": "GROUP_BY",
                         "keys": [group_key],
                         "aggregations": [
-                            {"field": amount_for_summary, "op": "SUM", "as": "Total Amount"}
+                            {"field": amount_for_summary, "op": "SUM", "as": "합계"}
                         ],
                     }
                 )
-                ops.append({"type": "ORDER_BY", "field": "Total Amount", "direction": "DESC"})
+                ops.append({"type": "ORDER_BY", "field": "합계", "direction": "DESC"})
 
                 plan["tables"].append(
                     {
                         "id": "summary_table",
-                        "title": "Summary Table",
+                        "title": f"{group_key}별 집계",
+                        "operations": ops,
+                    }
+                )
+                plan["layout"]["sections"].append(
+                    {"id": "sec_summary", "title": "Summary", "content": ["summary_table"]}
+                )
+            elif group_key:
+                # 숫자 컬럼이 없으면 count만 수행
+                ops.append(
+                    {
+                        "type": "GROUP_BY",
+                        "keys": [group_key],
+                        "aggregations": [
+                            {"field": group_key, "op": "COUNT", "as": "건수"}
+                        ],
+                    }
+                )
+                ops.append({"type": "ORDER_BY", "field": "건수", "direction": "DESC"})
+
+                plan["tables"].append(
+                    {
+                        "id": "summary_table",
+                        "title": f"{group_key}별 집계",
                         "operations": ops,
                     }
                 )
@@ -277,9 +332,18 @@ class SmartTransformer:
                         aggs = {}
                         rename_map = {}
                         for agg in op["aggregations"]:
-                            if agg["field"] in temp_df.columns:
-                                aggs[agg["field"]] = agg["op"].lower() # sum, mean, etc.
-                                rename_map[agg["field"]] = agg["as"]
+                            agg_op = agg["op"].lower()
+                            agg_field = agg["field"]
+                            
+                            # COUNT는 특별 처리 (어떤 컬럼이든 상관없음)
+                            if agg_op == "count":
+                                # 첫 번째 컬럼을 사용하여 count
+                                count_col = temp_df.columns[0]
+                                aggs[count_col] = "count"
+                                rename_map[count_col] = agg["as"]
+                            elif agg_field in temp_df.columns:
+                                aggs[agg_field] = agg_op  # sum, mean, etc.
+                                rename_map[agg_field] = agg["as"]
                         
                         if aggs:
                             temp_df = temp_df.groupby(keys).agg(aggs).reset_index()
