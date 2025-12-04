@@ -1,10 +1,8 @@
-import { useCallback, useRef, Dispatch, SetStateAction } from 'react';
+import { useCallback, useRef } from 'react';
 import ReactFlow, {
   Background,
   Controls,
   MiniMap,
-  useNodesState,
-  useEdgesState,
   addEdge,
   Connection,
   Edge,
@@ -17,32 +15,32 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-const initialNodes: Node[] = [
-  { id: '1', position: { x: 100, y: 100 }, data: { label: 'Input: Sales Data' }, type: 'input' },
-  { id: '2', position: { x: 300, y: 100 }, data: { label: 'Filter: Region=Seoul' } },
-  { id: '3', position: { x: 500, y: 100 }, data: { label: 'Output: Excel' }, type: 'output' },
-];
-
-const initialEdges: Edge[] = [
-  { id: 'e1-2', source: '1', target: '2', animated: true },
-  { id: 'e2-3', source: '2', target: '3', animated: true },
-];
-
 let id = 0;
 const getId = () => `dndnode_${id++}`;
 
 interface PipelineCanvasProps {
+  nodes: Node[];
+  edges: Edge[];
+  onNodesChange: OnNodesChange;
+  onEdgesChange: OnEdgesChange;
+  onConnect: OnConnect;
+  onAddNode: (node: Node) => void;
   selectedNode: string | null;
   onSelectNode: (nodeId: string | null) => void;
 }
 
-function PipelineCanvasContent({ selectedNode, onSelectNode }: PipelineCanvasProps) {
+function PipelineCanvasContent({
+  nodes,
+  edges,
+  onNodesChange,
+  onEdgesChange,
+  onConnect,
+  onAddNode,
+  selectedNode,
+  onSelectNode
+}: PipelineCanvasProps) {
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const { project } = useReactFlow();
-
-  const onConnect = useCallback((params: Connection) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -55,6 +53,7 @@ function PipelineCanvasContent({ selectedNode, onSelectNode }: PipelineCanvasPro
 
       const type = event.dataTransfer.getData('application/reactflow');
       const label = event.dataTransfer.getData('application/label');
+      const icon = event.dataTransfer.getData('application/icon'); // Get icon if available
 
       if (typeof type === 'undefined' || !type) {
         return;
@@ -70,14 +69,14 @@ function PipelineCanvasContent({ selectedNode, onSelectNode }: PipelineCanvasPro
 
       const newNode: Node = {
         id: getId(),
-        type,
+        type, // 'input', 'output', or default (undefined)
         position: p,
-        data: { label: label },
+        data: { label: label, icon: icon }, // Pass icon to data
       };
 
-      setNodes((nds) => nds.concat(newNode));
+      onAddNode(newNode);
     },
-    [project, setNodes]
+    [project, onAddNode]
   );
 
   const onNodeClick = (_: React.MouseEvent, node: Node) => {

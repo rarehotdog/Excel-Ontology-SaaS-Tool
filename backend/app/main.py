@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # Import Routers
-from app.api.routers import data, etl, smart, analytics, export, dictionary, lineage, settlement, ontology
+from app.api.routers import data, etl, smart, analytics, export, dictionary, lineage, settlement, ontology, smart_transform
 
 app = FastAPI(title="Excel Ontology API")
 
@@ -26,6 +26,7 @@ app.include_router(dictionary.router) # /dictionary/...
 app.include_router(lineage.router) # /lineage
 app.include_router(settlement.router) # /settlement/...
 app.include_router(ontology.router) # /ontology/...
+app.include_router(smart_transform.router, prefix="/smart-transform", tags=["smart-transform"])
 
 @app.get("/")
 def read_root():
