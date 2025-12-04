@@ -16,7 +16,7 @@ export function Sidebar({ activeView, onViewChange }: SidebarProps) {
   ];
 
   return (
-    <div className="w-72 flex flex-col p-4 gap-3">
+    <div className="w-72 h-screen sticky top-0 flex flex-col p-4 gap-3 bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
       {/* Logo */}
       <div className="bg-white/80 backdrop-blur-xl rounded-3xl px-6 py-5 shadow-lg shadow-purple-100/50">
         <div className="flex items-center gap-3">

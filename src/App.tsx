@@ -22,7 +22,8 @@ export default function App() {
     <div className="flex h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
       <Sidebar activeView={activeView} onViewChange={setActiveView} />
 
-      <main className="flex-1 overflow-hidden">
+      {/* Right content area: scrollable, sidebar stays fixed */}
+      <main className="flex-1 min-h-0 overflow-y-auto">
         {activeView === 'dashboard' && <Dashboard onNavigate={setActiveView} />}
         {activeView === 'sources' && (
           <DataSources onAnalyzeComplete={handleAnalysisComplete} />
@@ -30,8 +31,8 @@ export default function App() {
         {activeView === 'smart' && <SmartTransformView />}
         {activeView === 'reconciliation' && <SettlementView />}
         {activeView === 'analytics' && (
-          <AnalyticsView 
-            insights={analysisData?.insights} 
+          <AnalyticsView
+            insights={analysisData?.insights}
             trendData={analysisData?.trend_data}
             kpiMetrics={analysisData?.kpi_metrics}
             chartMetadata={analysisData?.chart_metadata}

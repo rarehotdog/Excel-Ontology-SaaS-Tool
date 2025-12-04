@@ -106,3 +106,4 @@ export function AnomalyResultsDialog({ isOpen, onClose, results, filename }: Ano
   );
 }
 
+

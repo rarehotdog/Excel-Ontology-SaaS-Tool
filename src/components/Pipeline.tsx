@@ -221,8 +221,8 @@ export function Pipeline() {
       </div>
 
       <div className="flex-1 flex overflow-hidden gap-6 px-6 pb-6 pt-6">
-        {/* Sidebar - Excel Functions */}
-        <div className="w-80 bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl shadow-purple-100/50 overflow-auto">
+        {/* Sidebar - Excel Functions (Node Library 스타일: 최대 높이 1000px, 내부 스크롤) */}
+        <div className="w-80 bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl shadow-purple-100/50 max-h-[1000px] overflow-auto">
           <div className="p-6">
             <div className="mb-6">
               <h3 className="text-lg text-gray-900 mb-2 flex items-center gap-2">
