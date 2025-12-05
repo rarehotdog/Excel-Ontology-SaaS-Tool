@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Database, Workflow, BarChart3, Upload, Calculator, FileText, CheckCircle, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -10,6 +10,7 @@ export function Dashboard({ onNavigate }: DashboardProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<{ name: string; rows: number; cols: number } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -95,10 +96,19 @@ export function Dashboard({ onNavigate }: DashboardProps) {
           
           {/* Upload Area */}
           <div className="max-w-md mx-auto mb-6" style={{ maxWidth: '768px' }}>
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".xlsx,.xls,.csv"
+              onChange={handleFileInput}
+              className="hidden"
+              style={{ display: 'none' }}
+            />
             <div 
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
               className={`group relative border-2 rounded-2xl p-8 transition-all cursor-pointer ${
                 isDragging 
                   ? 'bg-blue-50 border-blue-400' 
@@ -108,12 +118,6 @@ export function Dashboard({ onNavigate }: DashboardProps) {
               }`} 
               style={{ borderStyle: 'dashed' }}
             >
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                onChange={handleFileInput}
-                className="absolute inset-0 opacity-0 cursor-pointer"
-              />
               
               <div className="flex flex-col items-center">
                 {isProcessing ? (

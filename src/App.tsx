@@ -74,6 +74,9 @@ function AppContent() {
               trendData={analysisData?.trend_data}
               kpiMetrics={analysisData?.kpi_metrics}
               chartMetadata={analysisData?.chart_metadata}
+              transform_suggestions={analysisData?.transform_suggestions}
+              future_predictions={analysisData?.future_predictions}
+              ai_focus_points={analysisData?.ai_focus_points}
             />
           } />
           <Route path="/exports" element={<ExportsView />} />

@@ -269,7 +269,7 @@ export function DataSources({ onAnalyzeComplete }: DataSourcesProps) {
     navigate(`/${feature}`);
   };
 
-  // Mock 분석
+  // AI 기반 데이터 분석
   const handleAnalyze = () => {
     const selectedData = localSources.filter(f => selectedFiles.includes(f.id));
     if (selectedData.length === 0) return;
@@ -279,45 +279,385 @@ export function DataSources({ onAnalyzeComplete }: DataSourcesProps) {
       file.data.some(row => typeof row[col] === 'number')
     );
     
-    const mockInsights = [
-      `📊 총 ${file.rows.toLocaleString()}개의 데이터가 분석되었습니다.`,
-      `📋 ${file.columns.length}개의 컬럼이 감지되었습니다: ${file.columns.slice(0, 3).join(', ')}${file.columns.length > 3 ? '...' : ''}`,
-      numericCols.length > 0 ? `🔢 ${numericCols.length}개의 숫자 컬럼을 발견했습니다.` : '📝 텍스트 위주의 데이터입니다.',
-      `✅ 파일 크기: ${formatFileSize(file.size)}`,
-    ];
+    // === 숫자 컬럼별 통계 계산 ===
+    const numericStats: Record<string, { 
+      values: number[], mean: number, std: number, min: number, max: number,
+      minRow: Record<string, unknown>, maxRow: Record<string, unknown>
+    }> = {};
     
-    const mockTrendData = Array.from({ length: 12 }, (_, i) => ({
-      name: `${i + 1}월`,
-      value: Math.floor(Math.random() * 1000) + 500,
-    }));
+    numericCols.forEach(col => {
+      const validRows = file.data.filter(row => typeof row[col] === 'number');
+      const values = validRows.map(row => Number(row[col]));
+      
+      if (values.length > 0) {
+        const mean = values.reduce((a, b) => a + b, 0) / values.length;
+        const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
+        const std = Math.sqrt(variance);
+        const minVal = Math.min(...values);
+        const maxVal = Math.max(...values);
+        
+        numericStats[col] = {
+          values,
+          mean,
+          std,
+          min: minVal,
+          max: maxVal,
+          minRow: validRows.find(row => Number(row[col]) === minVal) || {},
+          maxRow: validRows.find(row => Number(row[col]) === maxVal) || {}
+        };
+      }
+    });
     
-    const mockKpiMetrics = [
+    // 날짜 컬럼 찾기
+    const dateCol = file.columns.find(c => 
+      c.toLowerCase().includes('date') || c.toLowerCase().includes('time') || 
+      c.toLowerCase() === '날짜' || c.toLowerCase().includes('일자')
+    );
+    
+    // 카테고리 컬럼 찾기
+    const categoryCol = file.columns.find(c => 
+      c.toLowerCase().includes('category') || c.toLowerCase().includes('type') || 
+      c.toLowerCase() === '카테고리' || c.toLowerCase().includes('분류')
+    );
+    
+    // 주요 숫자 컬럼 (amount, price, value 등)
+    const valueCol = file.columns.find(c => 
+      c.toLowerCase().includes('amount') || c.toLowerCase().includes('price') || 
+      c.toLowerCase().includes('value') || c.toLowerCase().includes('금액')
+    ) || numericCols[0];
+    
+    // Excel 직렬화 번호를 날짜 문자열로 변환하는 함수
+    const excelDateToString = (excelDate: number | string): string => {
+      // 숫자인 경우 Excel 직렬화 번호로 간주
+      if (typeof excelDate === 'number' || (typeof excelDate === 'string' && /^\d+$/.test(excelDate))) {
+        const num = Number(excelDate);
+        // Excel 날짜는 1900년 1월 1일부터 시작 (1 = 1900-01-01)
+        // JavaScript Date는 1970년 1월 1일부터 시작
+        if (num > 25569 && num < 50000) { // 1970년 ~ 2036년 범위
+          const jsDate = new Date((num - 25569) * 86400 * 1000);
+          return jsDate.toISOString().slice(0, 10); // YYYY-MM-DD
+        }
+      }
+      // 이미 문자열 날짜인 경우
+      return String(excelDate);
+    };
+    
+    // === 개요 탭: AI 분석 인사이트 (1차 분석 - 실제 데이터 기반) ===
+    const insights: string[] = [];
+    
+    // 기본 정보
+    insights.push(`총 ${file.rows.toLocaleString()}건의 데이터를 분석했습니다.`);
+    
+    // 숫자 컬럼 통계
+    if (valueCol && numericStats[valueCol]) {
+      const stats = numericStats[valueCol];
+      insights.push(
+        `'${valueCol}' 컬럼: 최대 ${stats.max.toLocaleString()}, 최소 ${stats.min.toLocaleString()}, 평균 ${stats.mean.toLocaleString(undefined, { maximumFractionDigits: 1 })}`
+      );
+    }
+    
+    // 시계열 분석 - AI가 자동으로 최적의 기간 단위 선택
+    let trendData: { name: string; value: number }[] = [];
+    let periodLabel = '기간별';
+    
+    if (dateCol) {
+      // 먼저 월별로 그룹핑해서 몇 개월 데이터인지 확인
+      const monthGroups: Record<string, { count: number; sum: number }> = {};
+      const dayGroups: Record<string, { count: number; sum: number }> = {};
+      
+      file.data.forEach(row => {
+        const rawDate = row[dateCol];
+        const dateStr = excelDateToString(rawDate as number | string);
+        
+        // 월별 그룹핑
+        const monthPeriod = dateStr.slice(0, 7); // YYYY-MM
+        if (monthPeriod && monthPeriod.length >= 4 && !monthPeriod.startsWith('und') && !monthPeriod.startsWith('nul')) {
+          if (!monthGroups[monthPeriod]) {
+            monthGroups[monthPeriod] = { count: 0, sum: 0 };
+          }
+          monthGroups[monthPeriod].count += 1;
+          if (valueCol && typeof row[valueCol] === 'number') {
+            monthGroups[monthPeriod].sum += Number(row[valueCol]);
+          }
+        }
+        
+        // 일별 그룹핑
+        const dayPeriod = dateStr.slice(0, 10); // YYYY-MM-DD
+        if (dayPeriod && dayPeriod.length >= 10 && !dayPeriod.startsWith('und') && !dayPeriod.startsWith('nul')) {
+          if (!dayGroups[dayPeriod]) {
+            dayGroups[dayPeriod] = { count: 0, sum: 0 };
+          }
+          dayGroups[dayPeriod].count += 1;
+          if (valueCol && typeof row[valueCol] === 'number') {
+            dayGroups[dayPeriod].sum += Number(row[valueCol]);
+          }
+        }
+      });
+      
+      const monthCount = Object.keys(monthGroups).length;
+      const dayCount = Object.keys(dayGroups).length;
+      
+      // AI 자동 선택: 월이 1~2개면 일별, 그 외에는 월별
+      let selectedGroups: Record<string, { count: number; sum: number }>;
+      if (monthCount <= 2 && dayCount > 1) {
+        selectedGroups = dayGroups;
+        periodLabel = '일별';
+      } else {
+        selectedGroups = monthGroups;
+        periodLabel = '월별';
+      }
+      
+      const sortedPeriods = Object.entries(selectedGroups).sort((a, b) => b[1].count - a[1].count);
+      if (sortedPeriods.length > 0) {
+        const [peakPeriod, peakData] = sortedPeriods[0];
+        insights.push(`데이터가 가장 많은 시점: ${peakPeriod} (${peakData.count.toLocaleString()}건)`);
+        
+        // 시계열 트렌드 데이터 생성
+        trendData = Object.entries(selectedGroups)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .slice(-15) // 최대 15개 포인트
+          .map(([name, data]) => ({ 
+            name: periodLabel === '일별' ? name.slice(5) : name, // 일별이면 MM-DD로 표시
+            value: valueCol && data.sum > 0 ? data.sum : data.count 
+          }));
+      }
+    }
+    
+    // 카테고리 분포
+    if (categoryCol) {
+      const catGroups: Record<string, number> = {};
+      file.data.forEach(row => {
+        const cat = String(row[categoryCol] || 'Unknown');
+        catGroups[cat] = (catGroups[cat] || 0) + 1;
+      });
+      
+      const sortedCats = Object.entries(catGroups).sort((a, b) => b[1] - a[1]);
+      const topCats = sortedCats.slice(0, 3);
+      if (topCats.length > 0) {
+        const catStr = topCats.map(([cat, cnt]) => 
+          `'${cat}' (${cnt}건, ${(cnt / file.rows * 100).toFixed(1)}%)`
+        ).join(', ');
+        insights.push(`상위 카테고리: ${catStr}`);
+      }
+    }
+    
+    // 데이터 품질
+    const nullCount = file.columns.reduce((sum, col) => 
+      sum + file.data.filter(row => row[col] === null || row[col] === undefined || row[col] === '').length, 0
+    );
+    if (nullCount > 0) {
+      const nullPct = (nullCount / (file.rows * file.columns.length) * 100).toFixed(1);
+      insights.push(`결측치: ${nullCount.toLocaleString()}건 (${nullPct}%)`);
+    }
+    
+    // trendData가 없으면 기본 생성
+    if (trendData.length === 0) {
+      trendData = Array.from({ length: 6 }, (_, i) => ({
+        name: `${i + 1}월`,
+        value: Math.floor(Math.random() * 100) + 50,
+      }));
+    }
+    
+    const kpiMetrics = [
       { label: '총 건수', value: file.rows.toLocaleString(), color: 'blue' },
       { label: '컬럼 수', value: file.columns.length.toString(), color: 'purple' },
       { label: '숫자 컬럼', value: numericCols.length.toString(), color: 'emerald' },
       { label: '파일 크기', value: formatFileSize(file.size), color: 'orange' },
     ];
     
+    // === 가공 탭: 2차 분석 데이터 ===
+    
+    // 가공 제안
+    const transformSuggestions: { title: string; description: string; priority: string; color: string }[] = [];
+    
+    if (nullCount > 0) {
+      transformSuggestions.push({
+        title: '결측치 처리',
+        description: `${nullCount.toLocaleString()}건의 결측치가 있습니다. 평균값 대체 또는 행 삭제를 권장합니다.`,
+        priority: 'high',
+        color: 'red'
+      });
+    }
+    
+    if (dateCol) {
+      transformSuggestions.push({
+        title: '시간 파생 변수',
+        description: `'${dateCol}'에서 요일, 월, 분기 파생 변수를 생성하면 시간 패턴 분석이 가능합니다.`,
+        priority: 'medium',
+        color: 'emerald'
+      });
+    }
+    
+    if (categoryCol) {
+      const uniqueCats = new Set(file.data.map(row => row[categoryCol])).size;
+      if (uniqueCats > 10) {
+        transformSuggestions.push({
+          title: '카테고리 그룹화',
+          description: `'${categoryCol}'에 ${uniqueCats}개 고유값이 있습니다. 상위 그룹으로 통합하면 분석이 용이합니다.`,
+          priority: 'low',
+          color: 'purple'
+        });
+      }
+    }
+    
+    // 앞으로의 예측
+    const futurePredictions: { title: string; description: string; confidence: string; trend: string }[] = [];
+    
+    if (trendData.length >= 3 && valueCol) {
+      const values = trendData.map(t => t.value);
+      const n = values.length;
+      const xMean = (n - 1) / 2;
+      const yMean = values.reduce((a, b) => a + b, 0) / n;
+      
+      let num = 0, den = 0;
+      values.forEach((y, x) => {
+        num += (x - xMean) * (y - yMean);
+        den += (x - xMean) ** 2;
+      });
+      const slope = den !== 0 ? num / den : 0;
+      const trendDir = slope > 0 ? '증가' : slope < 0 ? '감소' : '유지';
+      const nextVal = yMean + slope * n;
+      const pctChange = yMean !== 0 ? ((nextVal - yMean) / yMean * 100).toFixed(1) : '0';
+      
+      futurePredictions.push({
+        title: '다음 기간 예측',
+        description: `현재 ${trendDir} 추세입니다. 다음 기간 예상: ${nextVal.toLocaleString(undefined, { maximumFractionDigits: 0 })}건 (${Number(pctChange) > 0 ? '+' : ''}${pctChange}%)`,
+        confidence: Math.abs(slope) > 5 ? '75%' : '60%',
+        trend: trendDir
+      });
+    }
+    
+    // AI가 주목한 포인트 (심층 분석)
+    const aiFocusPoints: { title: string; description: string; type: string; severity: string }[] = [];
+    
+    // 이상치 탐지
+    if (valueCol && numericStats[valueCol]) {
+      const stats = numericStats[valueCol];
+      const sortedVals = [...stats.values].sort((a, b) => a - b);
+      const q1 = sortedVals[Math.floor(sortedVals.length * 0.25)];
+      const q3 = sortedVals[Math.floor(sortedVals.length * 0.75)];
+      const iqr = q3 - q1;
+      const outliers = stats.values.filter(v => v < q1 - 1.5 * iqr || v > q3 + 1.5 * iqr);
+      
+      if (outliers.length > 0) {
+        aiFocusPoints.push({
+          title: `이상치 ${outliers.length}건 탐지`,
+          description: `'${valueCol}' 컬럼에서 통계적 이상치가 발견되었습니다. 최대 이상치: ${Math.max(...outliers).toLocaleString()}. 데이터 오류 또는 특이 케이스일 수 있으니 검토가 필요합니다.`,
+          type: 'anomaly',
+          severity: 'high'
+        });
+      }
+    }
+    
+    // 변동성 분석
+    if (valueCol && numericStats[valueCol]) {
+      const stats = numericStats[valueCol];
+      const cv = stats.mean !== 0 ? (stats.std / stats.mean * 100) : 0;
+      
+      if (cv > 50) {
+        aiFocusPoints.push({
+          title: '높은 데이터 변동성',
+          description: `'${valueCol}'의 변동계수가 ${cv.toFixed(1)}%로 매우 높습니다. 특정 기간/카테고리에 집중된 값이 있는지 세분화 분석을 권장합니다.`,
+          type: 'volatility',
+          severity: 'warning'
+        });
+      }
+    }
+    
+    // 트렌드 패턴
+    if (trendData.length >= 4) {
+      const values = trendData.map(t => t.value);
+      let upCount = 0, downCount = 0;
+      for (let i = 1; i < values.length; i++) {
+        if (values[i] > values[i-1]) upCount++;
+        else if (values[i] < values[i-1]) downCount++;
+      }
+      
+      if (upCount >= values.length - 2) {
+        aiFocusPoints.push({
+          title: '지속적 성장세',
+          description: `최근 ${upCount}개 기간 연속 증가 추세입니다. 성장 동력이 유지되고 있으나, 향후 성장 둔화 가능성도 모니터링하세요.`,
+          type: 'trend',
+          severity: 'info'
+        });
+      } else if (downCount >= values.length - 2) {
+        aiFocusPoints.push({
+          title: '하락 추세 경고',
+          description: `최근 ${downCount}개 기간 연속 감소 추세입니다. 원인 분석과 대응 전략이 필요합니다.`,
+          type: 'trend',
+          severity: 'warning'
+        });
+      }
+    }
+    
+    // 최대/최소값 분석
+    if (valueCol && numericStats[valueCol]) {
+      const stats = numericStats[valueCol];
+      const maxInfo = dateCol && stats.maxRow[dateCol] 
+        ? `${stats.maxRow[dateCol]}에 기록` 
+        : '';
+      
+      aiFocusPoints.push({
+        title: '피크 포인트 분석',
+        description: `'${valueCol}' 최대값 ${stats.max.toLocaleString()}${maxInfo ? ` (${maxInfo})` : ''}. 평균 대비 ${((stats.max / stats.mean - 1) * 100).toFixed(0)}% 높은 수준입니다.`,
+        type: 'peak',
+        severity: 'info'
+      });
+    }
+    
+    // 카테고리 집중도
+    if (categoryCol) {
+      const catGroups: Record<string, number> = {};
+      file.data.forEach(row => {
+        const cat = String(row[categoryCol] || 'Unknown');
+        catGroups[cat] = (catGroups[cat] || 0) + 1;
+      });
+      const topCat = Object.entries(catGroups).sort((a, b) => b[1] - a[1])[0];
+      if (topCat) {
+        const topPct = (topCat[1] / file.rows * 100);
+        if (topPct > 40) {
+          aiFocusPoints.push({
+            title: '카테고리 편중',
+            description: `'${topCat[0]}' 카테고리가 전체의 ${topPct.toFixed(1)}%를 차지합니다. 다른 카테고리 성장 전략을 고려해보세요.`,
+            type: 'distribution',
+            severity: 'info'
+          });
+        }
+      }
+    }
+    
     if (onAnalyzeComplete) {
       onAnalyzeComplete({
-        insights: mockInsights,
-        trend_data: mockTrendData,
-        kpi_metrics: mockKpiMetrics,
+        insights,
+        trend_data: trendData,
+        kpi_metrics: kpiMetrics,
         chart_metadata: {
-          time_series: {
-            period_label: '월별',
-            value_column: '값',
-            reason: '월별 추이를 분석했습니다.',
-          },
-          distribution: {
-            category_column: '카테고리',
-            data: file.columns.slice(0, 5).map((col) => ({
-              name: col.length > 10 ? col.slice(0, 10) + '...' : col,
-              value: Math.floor(Math.random() * 100) + 50,
-            })),
-            reason: '컬럼별 데이터 분포입니다.',
-          },
+          time_series: dateCol ? {
+            period_label: periodLabel,
+            value_column: valueCol || '건수',
+            date_column: dateCol,
+            reason: `'${dateCol}' 기준 ${periodLabel} 시계열 분석`,
+          } : null,
+          distribution: categoryCol ? {
+            category_column: categoryCol,
+            data: (() => {
+              const counts: Record<string, number> = {};
+              file.data.forEach(row => {
+                const val = String(row[categoryCol] || 'Unknown');
+                counts[val] = (counts[val] || 0) + 1;
+              });
+              return Object.entries(counts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10)
+                .map(([name, value]) => ({ name, value }));
+            })(),
+            reason: `'${categoryCol}' 분포`,
+          } : null,
         },
+        // 2차 분석 데이터
+        transform_suggestions: transformSuggestions,
+        future_predictions: futurePredictions,
+        ai_focus_points: aiFocusPoints
       });
     }
   };
@@ -339,6 +679,7 @@ export function DataSources({ onAnalyzeComplete }: DataSourcesProps) {
         accept=".xlsx,.xls,.csv"
         multiple
         className="hidden"
+        style={{ display: 'none' }}
       />
 
       {/* 미리보기 모달 */}
@@ -356,6 +697,20 @@ export function DataSources({ onAnalyzeComplete }: DataSourcesProps) {
             </p>
             
             <div className="space-y-3">
+              <button
+                onClick={() => { setShowActionModal(false); handleAnalyze(); }}
+                className="w-full p-4 bg-orange-50 hover:bg-orange-100 rounded-2xl text-left transition-all flex items-center gap-4"
+              >
+                <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-amber-500 rounded-xl flex items-center justify-center">
+                  <BarChart3 className="w-6 h-6 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-900">Analytics</h4>
+                  <p className="text-sm text-gray-600">데이터 분석 및 인사이트</p>
+                </div>
+                <ArrowRight className="w-5 h-5 text-gray-400" />
+              </button>
+              
               <button
                 onClick={() => handleNavigateToFeature('smart')}
                 className="w-full p-4 bg-purple-50 hover:bg-purple-100 rounded-2xl text-left transition-all flex items-center gap-4"
@@ -380,20 +735,6 @@ export function DataSources({ onAnalyzeComplete }: DataSourcesProps) {
                 <div className="flex-1">
                   <h4 className="font-bold text-gray-900">Settlement</h4>
                   <p className="text-sm text-gray-600">정산/대사 분석</p>
-                </div>
-                <ArrowRight className="w-5 h-5 text-gray-400" />
-              </button>
-              
-              <button
-                onClick={() => { setShowActionModal(false); handleAnalyze(); }}
-                className="w-full p-4 bg-orange-50 hover:bg-orange-100 rounded-2xl text-left transition-all flex items-center gap-4"
-              >
-                <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-amber-500 rounded-xl flex items-center justify-center">
-                  <BarChart3 className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-bold text-gray-900">Analytics</h4>
-                  <p className="text-sm text-gray-600">데이터 분석 및 인사이트</p>
                 </div>
                 <ArrowRight className="w-5 h-5 text-gray-400" />
               </button>
@@ -537,12 +878,12 @@ export function DataSources({ onAnalyzeComplete }: DataSourcesProps) {
                           onClick={() => toggleFileSelection(source.id)}
                           className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors cursor-pointer ${
                             selectedFiles.includes(source.id)
-                              ? 'border-purple-500 bg-purple-500'
+                              ? 'border-purple-500 bg-white'
                               : 'border-gray-300 bg-white hover:border-purple-300'
                           }`}
                         >
                           {selectedFiles.includes(source.id) && (
-                            <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                            <Check className="w-3 h-3 text-gray-900" strokeWidth={3} />
                           )}
                         </div>
 

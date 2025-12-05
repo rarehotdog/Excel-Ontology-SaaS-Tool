@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Upload, FileSpreadsheet, X, CheckCircle, AlertCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -34,6 +34,7 @@ export function FileUploader({
     const [isProcessing, setIsProcessing] = useState(false);
     const [uploadedFiles, setUploadedFiles] = useState<ParsedFile[]>([]);
     const [error, setError] = useState<string | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const parseFile = async (file: File): Promise<ParsedFile | null> => {
         return new Promise((resolve) => {
@@ -157,24 +158,28 @@ export function FileUploader({
 
     return (
         <div className="space-y-4">
+            {/* 숨겨진 파일 입력 */}
+            <input
+                type="file"
+                ref={fileInputRef}
+                accept={accept}
+                multiple={multiple}
+                onChange={handleFileInput}
+                className="hidden"
+                style={{ display: 'none' }}
+            />
             {/* 드래그 앤 드롭 영역 */}
             <div
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
                 className={`relative border-2 border-dashed rounded-2xl p-8 transition-all cursor-pointer ${
                     isDragging 
                         ? 'border-blue-500 bg-blue-50' 
                         : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
                 } ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}
             >
-                <input
-                    type="file"
-                    accept={accept}
-                    multiple={multiple}
-                    onChange={handleFileInput}
-                    className="absolute inset-0 opacity-0 cursor-pointer"
-                />
                 <div className="flex flex-col items-center">
                     <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 ${
                         isDragging ? 'bg-blue-500' : 'bg-gray-200'

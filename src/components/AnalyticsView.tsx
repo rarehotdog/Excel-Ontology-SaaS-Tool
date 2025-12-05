@@ -2,11 +2,36 @@ import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, TrendingUp, BarChart3, Lightbulb, FileText, Activity, AlertCircle } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 
+interface TransformSuggestion {
+  title: string;
+  description: string;
+  priority?: string;
+  color?: string;
+}
+
+interface FuturePrediction {
+  title: string;
+  description: string;
+  confidence?: string;
+  trend?: string;
+}
+
+interface AIFocusPoint {
+  title: string;
+  description: string;
+  type?: string;
+  severity?: string;
+}
+
 interface AnalyticsViewProps {
   insights?: any[];
   trendData?: any[];
   kpiMetrics?: any[];
   chartMetadata?: any;
+  // 2차 분석 데이터
+  transform_suggestions?: TransformSuggestion[];
+  future_predictions?: FuturePrediction[];
+  ai_focus_points?: AIFocusPoint[];
 }
 
 type TabType = 'overview' | 'charts' | 'analysis';
@@ -18,7 +43,15 @@ interface CollapsibleSection {
   icon: React.ComponentType<any>;
 }
 
-export function AnalyticsView({ insights = [], trendData = [], kpiMetrics = [], chartMetadata = {} }: AnalyticsViewProps) {
+export function AnalyticsView({ 
+  insights = [], 
+  trendData = [], 
+  kpiMetrics = [], 
+  chartMetadata = {},
+  transform_suggestions = [],
+  future_predictions = [],
+  ai_focus_points = []
+}: AnalyticsViewProps) {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['timeseries', 'distribution', 'correlation', 'dynamic-insights', 'dynamic-kpi']));
 
@@ -222,84 +255,141 @@ export function AnalyticsView({ insights = [], trendData = [], kpiMetrics = [], 
     });
   }
 
-  // Analysis (가공) sections - 다양한 2차 가공 결과 노출
-  const analysisSections: CollapsibleSection[] = [
-    {
+  // 색상 매핑 헬퍼
+  const getColorClasses = (color?: string) => {
+    const colorMap: Record<string, { bg: string; border: string; title: string; text: string }> = {
+      red: { bg: 'bg-red-50', border: 'border-red-100', title: 'text-red-900', text: 'text-red-800' },
+      amber: { bg: 'bg-amber-50', border: 'border-amber-100', title: 'text-amber-900', text: 'text-amber-800' },
+      blue: { bg: 'bg-blue-50', border: 'border-blue-100', title: 'text-blue-900', text: 'text-blue-800' },
+      purple: { bg: 'bg-purple-50', border: 'border-purple-100', title: 'text-purple-900', text: 'text-purple-800' },
+      emerald: { bg: 'bg-emerald-50', border: 'border-emerald-100', title: 'text-emerald-900', text: 'text-emerald-800' },
+    };
+    return colorMap[color || 'blue'] || colorMap.blue;
+  };
+
+  // Analysis (가공) sections - 2차 분석 데이터 기반
+  const analysisSections: CollapsibleSection[] = [];
+  
+  // 가공 제안 - transform_suggestions 사용
+  if (transform_suggestions.length > 0) {
+    analysisSections.push({
       id: 'transform-suggestions',
       title: '가공 제안',
       icon: FileText,
       content: (
         <div className="space-y-6 p-2">
-          <div className="px-6 py-5 bg-emerald-50 rounded-xl border border-emerald-100">
-            <div className="font-semibold text-emerald-900 mb-2">데이터 정제</div>
-            <p className="text-sm text-emerald-800 leading-relaxed">
-              결측치 보간, 이상치 제거, 스케일 정규화를 통해 분석 모델의 안정성과 예측 정확도를 높일 수 있습니다.
-            </p>
-          </div>
-          <div className="px-6 py-5 bg-blue-50 rounded-xl border border-blue-100">
-            <div className="font-semibold text-blue-900 mb-2">파생 변수 생성</div>
-            <p className="text-sm text-blue-800 leading-relaxed">
-              날짜 컬럼으로부터 요일/월/분기 컬럼을 생성하거나, 금액과 횟수를 결합한 효율 지표를 만들면 더 풍부한 인사이트를 얻을 수 있습니다.
-            </p>
-          </div>
-          <div className="px-6 py-5 bg-purple-50 rounded-xl border border-purple-100">
-            <div className="font-semibold text-purple-900 mb-2">그룹 집계</div>
-            <p className="text-sm text-purple-800 leading-relaxed">
-              고객·상품·기간 단위로 그룹화하여 합계, 평균, 최대/최소값을 계산하면 핵심 KPI를 빠르게 파악할 수 있습니다.
-            </p>
-          </div>
+          {transform_suggestions.map((suggestion, idx) => {
+            const colors = getColorClasses(suggestion.color);
+            return (
+              <div key={idx} className={`px-6 py-5 rounded-xl border ${colors.bg} ${colors.border}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className={`font-semibold ${colors.title}`}>{suggestion.title}</div>
+                  {suggestion.priority && (
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      suggestion.priority === 'high' ? 'bg-red-100 text-red-700' :
+                      suggestion.priority === 'medium' ? 'bg-amber-100 text-amber-700' :
+                      'bg-gray-100 text-gray-600'
+                    }`}>
+                      {suggestion.priority === 'high' ? '높음' : suggestion.priority === 'medium' ? '중간' : '낮음'}
+                    </span>
+                  )}
+                </div>
+                <p className={`text-sm leading-relaxed ${colors.text}`}>{suggestion.description}</p>
+              </div>
+            );
+          })}
         </div>
       )
-    },
-    {
+    });
+  }
+  
+  // 앞으로의 예측 - future_predictions 사용
+  if (future_predictions.length > 0) {
+    analysisSections.push({
       id: 'future-forecast',
       title: '앞으로의 예측',
       icon: Lightbulb,
       content: (
         <div className="space-y-5 p-2">
-          <div className="px-6 py-5 bg-blue-50 rounded-xl border border-blue-100">
-            <div className="font-semibold text-blue-900 mb-2">다음 주기 예측</div>
-            <div className="text-sm text-blue-800 leading-relaxed">
-              {trendData.length > 1
-                ? (() => {
-                    const last = trendData[trendData.length - 1]?.value ?? 0;
-                    const prev = trendData[trendData.length - 2]?.value ?? last;
-                    const diff = last - prev;
-                    const dir = diff > 0 ? '증가' : diff < 0 ? '감소' : '변화 없음';
-                    const nextMin = last + diff * 0.5;
-                    const nextMax = last + diff * 1.2;
-                    return `최근 구간에서 ${dir} 추세가 관측되었습니다. 단순 추세 연장을 가정하면 다음 구간 값은 약 ${nextMin.toFixed(
-                      0
-                    )} ~ ${nextMax.toFixed(0)} 범위에서 형성될 가능성이 있습니다.`;
-                  })()
-                : '예측을 위한 시계열 데이터가 충분하지 않습니다.'}
+          {future_predictions.map((prediction, idx) => (
+            <div key={idx} className="px-6 py-5 bg-blue-50 rounded-xl border border-blue-100">
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-semibold text-blue-900">{prediction.title}</div>
+                <div className="flex items-center gap-2">
+                  {prediction.trend && (
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      prediction.trend === '증가' ? 'bg-emerald-100 text-emerald-700' :
+                      prediction.trend === '감소' ? 'bg-red-100 text-red-700' :
+                      'bg-amber-100 text-amber-700'
+                    }`}>
+                      {prediction.trend}
+                    </span>
+                  )}
+                  {prediction.confidence && (
+                    <span className="text-xs text-blue-600">신뢰도 {prediction.confidence}</span>
+                  )}
+                </div>
+              </div>
+              <p className="text-sm text-blue-800 leading-relaxed">{prediction.description}</p>
             </div>
-          </div>
+          ))}
           <p className="text-xs text-gray-500 px-2">
-            * 이 예측은 단순 추세 기반 가정으로, 외부 요인(시즌ality, 프로모션, 정책 변경 등)은 고려하지 않았습니다.
+            * 이 예측은 과거 데이터 추세 기반으로, 외부 요인(계절성, 프로모션 등)은 고려하지 않았습니다.
           </p>
         </div>
       )
-    },
-    {
+    });
+  }
+  
+  // AI가 주목한 포인트 - ai_focus_points 사용 (핵심!)
+  if (ai_focus_points.length > 0) {
+    analysisSections.push({
       id: 'ai-focus',
       title: 'AI가 주목한 포인트',
       icon: Activity,
       content: (
         <div className="space-y-4 p-2">
-          {(insights.slice(0, 3).length ? insights.slice(0, 3) : [
-            '데이터의 전체 분포와 극단값을 기준으로, 이상치 후보를 자동으로 태깅할 수 있습니다.',
-            '기간별 추세를 기준으로 피크 구간과 비수기 구간을 분리하면, 리소스 배분 전략 수립에 도움이 됩니다.',
-            '주요 카테고리별 비중을 재분류하면, 수익 기여도가 높은 군집을 별도로 관리할 수 있습니다.'
-          ]).map((msg, idx) => (
-            <div key={idx} className="px-6 py-4 bg-gray-50 rounded-xl border border-gray-200">
-              <p className="text-sm text-gray-700 leading-relaxed">{msg}</p>
-            </div>
-          ))}
+          {ai_focus_points.map((point, idx) => {
+            const severityColors: Record<string, { bg: string; border: string; badge: string }> = {
+              high: { bg: 'bg-red-50', border: 'border-red-200', badge: 'bg-red-100 text-red-700' },
+              warning: { bg: 'bg-amber-50', border: 'border-amber-200', badge: 'bg-amber-100 text-amber-700' },
+              info: { bg: 'bg-blue-50', border: 'border-blue-200', badge: 'bg-blue-100 text-blue-700' },
+              low: { bg: 'bg-gray-50', border: 'border-gray-200', badge: 'bg-gray-100 text-gray-600' },
+            };
+            const colors = severityColors[point.severity || 'info'] || severityColors.info;
+            
+            const typeLabels: Record<string, string> = {
+              anomaly: '🔍 이상치',
+              volatility: '📊 변동성',
+              trend: '📈 트렌드',
+              peak: '⭐ 피크',
+              distribution: '📉 분포',
+            };
+            
+            return (
+              <div key={idx} className={`px-6 py-4 rounded-xl border ${colors.bg} ${colors.border}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="font-semibold text-gray-900 flex items-center gap-2">
+                    {typeLabels[point.type || ''] && (
+                      <span className="text-sm">{typeLabels[point.type || ''].split(' ')[0]}</span>
+                    )}
+                    {point.title}
+                  </div>
+                  {point.severity && (
+                    <span className={`text-xs px-2 py-1 rounded-full ${colors.badge}`}>
+                      {point.severity === 'high' ? '중요' : 
+                       point.severity === 'warning' ? '주의' : '참고'}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-700 leading-relaxed">{point.description}</p>
+              </div>
+            );
+          })}
         </div>
       )
-    }
-  ];
+    });
+  }
 
   const renderCollapsibleSection = (section: CollapsibleSection) => {
     const isExpanded = expandedSections.has(section.id);
