@@ -225,6 +225,7 @@ export function SmartTransformView() {
     const [suggestedTemplates, setSuggestedTemplates] = useState<{id: string; label: string; prompt: string; description: string}[]>([]);
     const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
     const [showReferenceModal, setShowReferenceModal] = useState(false);
+    const [transformError, setTransformError] = useState<string | null>(null);
     const [referenceFile, setReferenceFile] = useState<File | null>(null);
     const [isUploadingReference, setIsUploadingReference] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -304,6 +305,7 @@ export function SmartTransformView() {
         }
 
         setIsGenerating(true);
+        setTransformError(null); // 에러 초기화
         console.log('변환 실행:', { prompt, filename: uploadedFileName });
 
         try {
@@ -320,6 +322,9 @@ export function SmartTransformView() {
             if (response.ok) {
                 const data = await response.json();
                 console.log('변환 결과:', data);
+                
+                // 에러 클리어
+                setTransformError(null);
                 
                 // 파이프라인 시각화를 위한 노드 생성
                 const generateResponse = await fetch('http://localhost:8000/smart-transform/generate', {
@@ -346,11 +351,16 @@ export function SmartTransformView() {
             } else {
                 const errorData = await response.json();
                 console.error('변환 실패:', errorData);
-                alert(`변환 실패: ${errorData.detail || '알 수 없는 오류'}`);
+                // 인라인 에러 메시지 표시
+                setTransformError(errorData.detail || '알 수 없는 오류가 발생했습니다.');
+                // 파이프라인과 결과 초기화
+                setPipelineData(null);
+                setPreviewData([]);
+                setAppliedOperations([]);
             }
         } catch (error) {
             console.error('Transform error:', error);
-            alert('서버 연결 오류');
+            setTransformError('서버 연결 오류가 발생했습니다. 서버가 실행 중인지 확인해주세요.');
         } finally {
             setIsGenerating(false);
         }
@@ -639,9 +649,16 @@ export function SmartTransformView() {
                         <div className="flex gap-4">
                             <textarea
                                 value={naturalLanguageInput}
-                                onChange={(e) => setNaturalLanguageInput(e.target.value)}
+                                onChange={(e) => {
+                                    setNaturalLanguageInput(e.target.value);
+                                    if (transformError) setTransformError(null); // 입력 시 에러 클리어
+                                }}
                                 placeholder="예: '금액 상위 10개만 보여줘', '부서별로 그룹화하고 합계를 계산해줘', '서울 지역만 필터링해줘'"
-                                className="flex-1 h-24 px-4 py-3 bg-white border-2 border-purple-200 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none focus:border-purple-400 resize-none transition-all"
+                                className={`flex-1 h-24 px-4 py-3 bg-white border-2 rounded-2xl text-gray-900 placeholder-gray-400 focus:outline-none resize-none transition-all ${
+                                    transformError 
+                                        ? 'border-red-300 focus:border-red-400' 
+                                        : 'border-purple-200 focus:border-purple-400'
+                                }`}
                             />
                             <div className="flex flex-col gap-2 w-48">
                                 <button
@@ -668,8 +685,32 @@ export function SmartTransformView() {
                             </div>
                         </div>
 
+                        {/* 에러 메시지 표시 */}
+                        {transformError && (
+                            <div className="mt-4 p-4 bg-red-50 border-2 border-red-200 rounded-2xl flex items-start gap-3">
+                                <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                    <AlertCircle className="w-5 h-5 text-red-500" />
+                                </div>
+                                <div className="flex-1">
+                                    <p className="text-sm font-bold text-red-700 mb-1">분석 실패</p>
+                                    <p className="text-sm text-red-600">{transformError}</p>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        <span className="text-xs text-red-500 bg-red-100 px-2 py-1 rounded">예시: "상위 10개만 보여줘"</span>
+                                        <span className="text-xs text-red-500 bg-red-100 px-2 py-1 rounded">예시: "서울 지역만 필터링해줘"</span>
+                                        <span className="text-xs text-red-500 bg-red-100 px-2 py-1 rounded">예시: "부서별로 집계해줘"</span>
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={() => setTransformError(null)}
+                                    className="p-1 hover:bg-red-100 rounded-lg transition-colors"
+                                >
+                                    <X className="w-4 h-4 text-red-400" />
+                                </button>
+                            </div>
+                        )}
+
                         {/* Quick Templates - 파일 업로드 후에만 표시 */}
-                        {uploadedFile && (
+                        {uploadedFile && !transformError && (
                             <div className="mt-4">
                                 {isLoadingTemplates ? (
                                     <div className="flex items-center gap-2 text-sm text-gray-500">

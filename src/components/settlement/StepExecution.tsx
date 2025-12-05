@@ -769,52 +769,60 @@ export function StepExecution({
 
                     {/* 가상화 테이블 */}
                     <div className="border border-gray-200 rounded-2xl overflow-hidden">
-                        <div className="grid grid-cols-8 gap-2 p-3 bg-gray-50 text-xs font-medium text-gray-600 border-b">
-                            <div>ID</div>
-                            <div>차량번호</div>
-                            <div>기사ID</div>
-                            <div className="text-right">운임금액</div>
-                            <div className="text-right">카드금액</div>
-                            <div className="text-right">차이</div>
-                            <div className="text-center">상태</div>
-                            <div>이슈</div>
-                        </div>
-                        <div 
-                            className="overflow-auto" 
-                            style={{ height: containerHeight }}
-                            onScroll={integrityScroll.onScroll}
-                        >
-                            <div style={{ height: integrityScroll.totalHeight, position: 'relative' }}>
-                                <div style={{ transform: `translateY(${integrityScroll.offsetY}px)` }}>
-                                    {integrityScroll.visibleItems.map(idx => {
-                                        const row = filteredIntegrityData[idx];
-                                        if (!row) return null;
-                                        return (
-                                            <div 
-                                                key={row.id} 
-                                                onClick={() => handleRowClick(row)}
-                                                className={`grid grid-cols-8 gap-2 p-3 text-sm border-b border-gray-100 hover:bg-gray-100 cursor-pointer transition-all ${
-                                                    row.status === 'critical' ? 'bg-red-50' : row.status === 'warning' ? 'bg-yellow-50' : ''
-                                                }`}
-                                                style={{ height: rowHeight }}
-                                            >
-                                                <div className="truncate font-mono text-xs">{row.id}</div>
-                                                <div className="truncate">{row.vehicleId}</div>
-                                                <div className="truncate">{row.driverId}</div>
-                                                <div className="text-right">{row.fareAmount.toLocaleString()}</div>
-                                                <div className="text-right">{row.cardAmount.toLocaleString()}</div>
-                                                <div className={`text-right ${row.fareAmount !== row.cardAmount ? 'text-red-600 font-medium' : ''}`}>
-                                                    {(row.cardAmount - row.fareAmount).toLocaleString()}
-                                                </div>
-                                                <div className="flex justify-center">
-                                                    {row.status === 'critical' && <XCircle className="w-4 h-4 text-red-500" />}
-                                                    {row.status === 'warning' && <AlertTriangle className="w-4 h-4 text-yellow-500" />}
-                                                    {row.status === 'normal' && <CheckCircle className="w-4 h-4 text-green-500" />}
-                                                </div>
-                                                <div className="truncate text-xs text-gray-600">{row.issueType || '-'}</div>
-                                            </div>
-                                        );
-                                    })}
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[900px]">
+                                <thead className="bg-gray-50 text-xs font-medium text-gray-600 border-b sticky top-0">
+                                    <tr>
+                                        <th className="px-3 py-3 text-left w-[120px]">ID</th>
+                                        <th className="px-3 py-3 text-left w-[120px]">차량번호</th>
+                                        <th className="px-3 py-3 text-left w-[100px]">기사ID</th>
+                                        <th className="px-3 py-3 text-right w-[100px]">운임금액</th>
+                                        <th className="px-3 py-3 text-right w-[100px]">카드금액</th>
+                                        <th className="px-3 py-3 text-right w-[80px]">차이</th>
+                                        <th className="px-3 py-3 text-center w-[60px]">상태</th>
+                                        <th className="px-3 py-3 text-left">이슈</th>
+                                    </tr>
+                                </thead>
+                            </table>
+                            <div 
+                                className="overflow-y-auto" 
+                                style={{ height: containerHeight }}
+                                onScroll={integrityScroll.onScroll}
+                            >
+                                <div style={{ height: integrityScroll.totalHeight, position: 'relative' }}>
+                                    <table className="w-full min-w-[900px]" style={{ transform: `translateY(${integrityScroll.offsetY}px)` }}>
+                                        <tbody>
+                                            {integrityScroll.visibleItems.map(idx => {
+                                                const row = filteredIntegrityData[idx];
+                                                if (!row) return null;
+                                                return (
+                                                    <tr 
+                                                        key={row.id} 
+                                                        onClick={() => handleRowClick(row)}
+                                                        className={`text-sm border-b border-gray-100 hover:bg-gray-100 cursor-pointer transition-all ${
+                                                            row.status === 'critical' ? 'bg-red-50' : row.status === 'warning' ? 'bg-yellow-50' : ''
+                                                        }`}
+                                                        style={{ height: rowHeight }}
+                                                    >
+                                                        <td className="px-3 py-2 w-[120px] truncate font-mono text-xs">{row.id}</td>
+                                                        <td className="px-3 py-2 w-[120px] truncate">{row.vehicleId}</td>
+                                                        <td className="px-3 py-2 w-[100px] truncate">{row.driverId}</td>
+                                                        <td className="px-3 py-2 w-[100px] text-right">{row.fareAmount.toLocaleString()}</td>
+                                                        <td className="px-3 py-2 w-[100px] text-right">{row.cardAmount.toLocaleString()}</td>
+                                                        <td className={`px-3 py-2 w-[80px] text-right ${row.fareAmount !== row.cardAmount ? 'text-red-600 font-medium' : ''}`}>
+                                                            {(row.cardAmount - row.fareAmount).toLocaleString()}
+                                                        </td>
+                                                        <td className="px-3 py-2 w-[60px] text-center">
+                                                            {row.status === 'critical' && <XCircle className="w-4 h-4 text-red-500 inline" />}
+                                                            {row.status === 'warning' && <AlertTriangle className="w-4 h-4 text-yellow-500 inline" />}
+                                                            {row.status === 'normal' && <CheckCircle className="w-4 h-4 text-green-500 inline" />}
+                                                        </td>
+                                                        <td className="px-3 py-2 truncate text-xs text-gray-600">{row.issueType || '-'}</td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
@@ -930,54 +938,62 @@ export function StepExecution({
 
                 {/* 가상화 테이블 */}
                 <div className="border border-gray-200 rounded-2xl overflow-hidden">
-                    <div className="grid grid-cols-7 gap-2 p-3 bg-gray-50 text-xs font-medium text-gray-600 border-b">
-                        <div>Key ID</div>
-                        <div>거래일자</div>
-                        <div className="text-right">파일 A</div>
-                        <div className="text-right">파일 B</div>
-                        <div className="text-right">차이</div>
-                        <div className="text-center">구분</div>
-                        <div>AI 추론</div>
-                    </div>
-                    <div 
-                        className="overflow-auto" 
-                        style={{ height: containerHeight }}
-                        onScroll={diffScroll.onScroll}
-                    >
-                        <div style={{ height: diffScroll.totalHeight, position: 'relative' }}>
-                            <div style={{ transform: `translateY(${diffScroll.offsetY}px)` }}>
-                                {diffScroll.visibleItems.map(idx => {
-                                    const row = filteredDiffData[idx];
-                                    if (!row) return null;
-                                    return (
-                                        <div 
-                                            key={row.id}
-                                            onClick={() => handleRowClick(row)}
-                                            className={`grid grid-cols-7 gap-2 p-3 text-sm border-b border-gray-100 hover:bg-gray-100 cursor-pointer transition-all ${
-                                                row.source === 'a_only' ? 'bg-blue-50' : row.source === 'b_only' ? 'bg-pink-50' : row.diffAmount !== 0 ? 'bg-yellow-50' : ''
-                                            }`}
-                                            style={{ height: rowHeight }}
-                                        >
-                                            <div className="truncate font-mono text-xs">{row.keyId}</div>
-                                            <div>{row.transactionDate}</div>
-                                            <div className="text-right">{row.fileAValue > 0 ? row.fileAValue.toLocaleString() : '-'}</div>
-                                            <div className="text-right">{row.fileBValue > 0 ? row.fileBValue.toLocaleString() : '-'}</div>
-                                            <div className={`text-right font-medium ${row.diffAmount > 0 ? 'text-green-600' : row.diffAmount < 0 ? 'text-red-600' : ''}`}>
-                                                {row.diffAmount !== 0 ? row.diffAmount.toLocaleString() : '-'}
-                                            </div>
-                                            <div className="flex justify-center">
-                                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                                    row.source === 'a_only' ? 'bg-blue-100 text-blue-700' :
-                                                    row.source === 'b_only' ? 'bg-pink-100 text-pink-700' :
-                                                    'bg-gray-100 text-gray-700'
-                                                }`}>
-                                                    {row.source === 'a_only' ? 'A Only' : row.source === 'b_only' ? 'B Only' : 'Match'}
-                                                </span>
-                                            </div>
-                                            <div className="truncate text-xs text-gray-600">{row.aiReasoning || '-'}</div>
-                                        </div>
-                                    );
-                                })}
+                    <div className="overflow-x-auto">
+                        <table className="w-full min-w-[900px]">
+                            <thead className="bg-gray-50 text-xs font-medium text-gray-600 border-b sticky top-0">
+                                <tr>
+                                    <th className="px-3 py-3 text-left w-[140px]">Key ID</th>
+                                    <th className="px-3 py-3 text-left w-[100px]">거래일자</th>
+                                    <th className="px-3 py-3 text-right w-[120px]">파일 A</th>
+                                    <th className="px-3 py-3 text-right w-[120px]">파일 B</th>
+                                    <th className="px-3 py-3 text-right w-[100px]">차이</th>
+                                    <th className="px-3 py-3 text-center w-[80px]">구분</th>
+                                    <th className="px-3 py-3 text-left">AI 추론</th>
+                                </tr>
+                            </thead>
+                        </table>
+                        <div 
+                            className="overflow-y-auto" 
+                            style={{ height: containerHeight }}
+                            onScroll={diffScroll.onScroll}
+                        >
+                            <div style={{ height: diffScroll.totalHeight, position: 'relative' }}>
+                                <table className="w-full min-w-[900px]" style={{ transform: `translateY(${diffScroll.offsetY}px)` }}>
+                                    <tbody>
+                                        {diffScroll.visibleItems.map(idx => {
+                                            const row = filteredDiffData[idx];
+                                            if (!row) return null;
+                                            return (
+                                                <tr 
+                                                    key={row.id}
+                                                    onClick={() => handleRowClick(row)}
+                                                    className={`text-sm border-b border-gray-100 hover:bg-gray-100 cursor-pointer transition-all ${
+                                                        row.source === 'a_only' ? 'bg-blue-50' : row.source === 'b_only' ? 'bg-pink-50' : row.diffAmount !== 0 ? 'bg-yellow-50' : ''
+                                                    }`}
+                                                    style={{ height: rowHeight }}
+                                                >
+                                                    <td className="px-3 py-2 w-[140px] truncate font-mono text-xs">{row.keyId}</td>
+                                                    <td className="px-3 py-2 w-[100px]">{row.transactionDate}</td>
+                                                    <td className="px-3 py-2 w-[120px] text-right">{row.fileAValue > 0 ? row.fileAValue.toLocaleString() : '-'}</td>
+                                                    <td className="px-3 py-2 w-[120px] text-right">{row.fileBValue > 0 ? row.fileBValue.toLocaleString() : '-'}</td>
+                                                    <td className={`px-3 py-2 w-[100px] text-right font-medium ${row.diffAmount > 0 ? 'text-green-600' : row.diffAmount < 0 ? 'text-red-600' : ''}`}>
+                                                        {row.diffAmount !== 0 ? row.diffAmount.toLocaleString() : '-'}
+                                                    </td>
+                                                    <td className="px-3 py-2 w-[80px] text-center">
+                                                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                                            row.source === 'a_only' ? 'bg-blue-100 text-blue-700' :
+                                                            row.source === 'b_only' ? 'bg-pink-100 text-pink-700' :
+                                                            'bg-gray-100 text-gray-700'
+                                                        }`}>
+                                                            {row.source === 'a_only' ? 'A Only' : row.source === 'b_only' ? 'B Only' : 'Match'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-3 py-2 truncate text-xs text-gray-600">{row.aiReasoning || '-'}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>

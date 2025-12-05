@@ -489,6 +489,14 @@ async def execute_transform(request: ExecuteRequest):
     if request.filename not in processor.data_store:
         raise HTTPException(status_code=404, detail="File not found")
 
+    # 1) Validate the prompt first
+    validation = smart_transformer.validate_prompt(request.prompt)
+    if not validation["valid"]:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"⚠️ 분석 불가: {validation['reason']}"
+        )
+
     df = processor.data_store[request.filename]
 
     # Build a simple schema description from the DataFrame
@@ -498,7 +506,7 @@ async def execute_transform(request: ExecuteRequest):
         "shape": df.shape,
     }
 
-    # 1) Plan from prompt + schema
+    # 2) Plan from prompt + schema
     plan = smart_transformer.generate_plan_from_prompt(request.prompt, schema)
 
     # 2) Execute plan

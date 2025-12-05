@@ -58,6 +58,62 @@ class SmartTransformer:
 
     # --- Magic Editor 2.0 Logic ---
 
+    def validate_prompt(self, prompt: str) -> Dict[str, Any]:
+        """
+        Validates if the prompt is meaningful Korean/English natural language.
+        Returns {'valid': True/False, 'reason': str}
+        """
+        text = prompt.strip()
+        
+        if len(text) < 2:
+            return {"valid": False, "reason": "입력이 너무 짧습니다."}
+        
+        # 인식 가능한 키워드 목록
+        valid_keywords = [
+            # 동작 키워드
+            "보여", "줘", "해줘", "알려", "보기", "정렬", "필터", "그룹", "집계",
+            "합계", "평균", "최대", "최소", "상위", "하위", "제외", "포함",
+            "분석", "변환", "계산", "추출", "검색", "조회", "찾아", "만들어",
+            "삭제", "추가", "수정", "정리", "분류", "나눠", "합쳐",
+            # 영어 키워드
+            "show", "filter", "group", "sort", "top", "bottom", "sum", "avg",
+            "max", "min", "count", "by", "only", "exclude", "include",
+            # 데이터 관련
+            "데이터", "컬럼", "행", "열", "값", "숫자", "금액", "날짜", "이름",
+            "지역", "카테고리", "부서", "상태", "결제", "거래", "매출", "비용",
+            # 조건 키워드
+            "만", "만큼", "이상", "이하", "초과", "미만", "같은", "다른",
+            "크", "작", "높", "낮", "많", "적", "전체", "모든", "각",
+            # 특정 값 (도시 등)
+            "서울", "부산", "대전", "광주", "대구", "인천", "울산", "세종",
+            # 숫자 패턴
+            "10", "20", "50", "100", "개", "건",
+        ]
+        
+        # 프롬프트에서 유효한 키워드가 하나라도 있는지 확인
+        found_keywords = []
+        text_lower = text.lower()
+        for kw in valid_keywords:
+            if kw in text_lower:
+                found_keywords.append(kw)
+        
+        if not found_keywords:
+            # 한글 자음/모음만 있는지 체크 (의미 없는 입력)
+            import re
+            # 자음만 있거나 모음만 있는 패턴
+            jamo_pattern = re.compile(r'^[ㄱ-ㅎㅏ-ㅣ\s]+$')
+            if jamo_pattern.match(text):
+                return {"valid": False, "reason": "의미 있는 문장을 입력해주세요. (예: '상위 10개만 보여줘', '서울 지역만 필터링해줘')"}
+            
+            # 반복되는 문자 패턴 체크
+            repeated_pattern = re.compile(r'(.)\1{3,}')
+            if repeated_pattern.search(text):
+                return {"valid": False, "reason": "의미 있는 문장을 입력해주세요. (예: '부서별로 집계해줘', '최신순으로 정렬해줘')"}
+            
+            return {"valid": False, "reason": "이해할 수 없는 요청입니다. 데이터 변환에 대한 명확한 지시를 입력해주세요."}
+        
+        return {"valid": True, "reason": None}
+
     def generate_plan_from_prompt(self, prompt: str, schema: Dict[str, Any]) -> Dict[str, Any]:
         """
         Generates a structured transformation plan based on user prompt and schema.
@@ -72,6 +128,7 @@ class SmartTransformer:
         plan = {
             "tables": [],
             "layout": {"type": "REPORT", "sections": []},
+            "isValidRequest": True,  # 유효한 요청인지 표시
         }
 
         # Helper: find column by (case-insensitive) name fragment
